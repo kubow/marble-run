@@ -1,0 +1,69 @@
+{
+	"_comment": "Track module catalogue. Changing anything here changes generated levels: bump TrackGenerator.VERSION and record the new fingerprint (see docs/ARCHITECTURE.md).",
+	"track": {
+		"half_width": 1.5,
+		"wall_height": 0.45,
+		"grade": -0.07,
+		"lip": 0.1,
+		"base_depth": 0.3,
+		"ring_spacing": 0.8,
+		"ball_radius": 0.28
+	},
+	"modules": [
+		{ "id": "start", "type": "start", "length": 8, "tier": 0, "weight": 0, "difficulty": 0, "color": "#8d99ff" },
+		{ "id": "finish", "type": "finish", "length": 12, "tier": 0, "weight": 0, "difficulty": 0, "color": "#ffd23f" },
+
+		{ "id": "straight", "type": "straight", "length": 10, "tier": 1, "weight": 9, "difficulty": 0.5, "color": "#3fa9f5" },
+		{ "id": "straight_long", "type": "straight", "length": 16, "tier": 1, "weight": 4, "difficulty": 0.5, "color": "#3fa9f5" },
+
+		{ "id": "gentle_left", "type": "gentle_curve", "length": 14, "curve": "arc", "turn_deg": 45, "bank_deg": 8, "tier": 1, "weight": 8, "difficulty": 1, "color": "#2ec27e" },
+		{ "id": "gentle_right", "type": "gentle_curve", "length": 14, "curve": "arc", "turn_deg": -45, "bank_deg": 8, "tier": 1, "weight": 8, "difficulty": 1, "color": "#2ec27e" },
+
+		{ "id": "sharp_left", "type": "sharp_curve", "length": 12, "curve": "arc", "turn_deg": 90, "bank_deg": 16, "tier": 2, "weight": 5, "difficulty": 2, "color": "#ff8c42" },
+		{ "id": "sharp_right", "type": "sharp_curve", "length": 12, "curve": "arc", "turn_deg": -90, "bank_deg": 16, "tier": 2, "weight": 5, "difficulty": 2, "color": "#ff8c42" },
+
+		{ "id": "downhill", "type": "downhill_ramp", "length": 12, "elevation": -2.5, "tier": 1, "weight": 6, "difficulty": 1, "color": "#9b5de5" },
+		{ "id": "downhill_steep", "type": "downhill_ramp", "length": 16, "elevation": -5.0, "tier": 3, "weight": 2, "difficulty": 2, "color": "#7b2cbf" },
+		{ "id": "uphill", "type": "uphill_ramp", "length": 12, "elevation": 1.0, "min_entry_speed": 3.5, "tier": 3, "weight": 4, "difficulty": 2, "color": "#f15bb5" },
+
+		{ "id": "wavy", "type": "wavy", "length": 16, "wave_amp": 0.45, "wave_count": 2, "tier": 3, "weight": 4, "difficulty": 2, "color": "#00b4d8" },
+
+		{ "id": "s_curve_left", "type": "s_curve", "length": 16, "curve": "s", "turn_deg": 30, "bank_deg": 8, "tier": 2, "weight": 5, "difficulty": 1.5, "color": "#80b918" },
+		{ "id": "s_curve_right", "type": "s_curve", "length": 16, "curve": "s", "turn_deg": -30, "bank_deg": 8, "tier": 2, "weight": 5, "difficulty": 1.5, "color": "#80b918" },
+
+		{ "id": "funnel", "type": "funnel", "length": 16, "width_scale": 2.0, "wall_scale": 2.2, "dish": 0.5, "window": "bell", "tier": 3, "weight": 3, "difficulty": 2, "color": "#ffb703" },
+
+		{ "id": "bridge", "type": "narrow_bridge", "length": 12, "width_scale": 0.42, "wall_scale": 0.0, "tier": 3, "weight": 4, "difficulty": 3, "color": "#ef476f" },
+
+		{ "id": "obstacles_static", "type": "obstacle", "length": 14, "tier": 3, "weight": 4, "difficulty": 2.5, "color": "#b8c0cc",
+			"obstacle_layouts": [
+				[
+					{ "kind": "peg", "t": 0.3, "u": -0.5, "r": 0.2, "h": 0.7 },
+					{ "kind": "peg", "t": 0.3, "u": 0.5, "r": 0.2, "h": 0.7 },
+					{ "kind": "peg", "t": 0.68, "u": 0.0, "r": 0.25, "h": 0.7 }
+				],
+				[
+					{ "kind": "peg", "t": 0.25, "u": -0.35, "r": 0.25, "h": 0.7 },
+					{ "kind": "peg", "t": 0.5, "u": 0.35, "r": 0.25, "h": 0.7 },
+					{ "kind": "peg", "t": 0.75, "u": -0.35, "r": 0.25, "h": 0.7 }
+				],
+				[
+					{ "kind": "block", "t": 0.42, "u": -0.4, "size": [1.4, 0.5, 0.4] },
+					{ "kind": "bumper", "t": 0.76, "u": 0.5, "r": 0.22, "h": 0.5 }
+				]
+			]
+		},
+		{ "id": "obstacles_moving", "type": "obstacle", "length": 16, "tier": 4, "weight": 4, "difficulty": 3, "color": "#a0a8b8",
+			"obstacle_layouts": [
+				[
+					{ "kind": "sweeper", "t": 0.3, "u": -0.45, "amp": 0.25, "period": 2.6, "phase": 0.0, "size": [0.9, 0.5, 0.35] },
+					{ "kind": "sweeper", "t": 0.72, "u": 0.45, "amp": 0.25, "period": 2.6, "phase": 0.5, "size": [0.9, 0.5, 0.35] }
+				],
+				[
+					{ "kind": "sweeper", "t": 0.5, "u": 0.45, "amp": 0.25, "period": 2.0, "phase": 0.25, "size": [0.9, 0.5, 0.35] },
+					{ "kind": "peg", "t": 0.2, "u": 0.5, "r": 0.22, "h": 0.7 }
+				]
+			]
+		}
+	]
+}

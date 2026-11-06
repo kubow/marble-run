@@ -1,0 +1,12 @@
+# Godot
+.godot/
+*.import.tmp
+/android/
+export_credentials.cfg
+# Build outputs
+builds/*
+!builds/.gdignore
+!builds/README.md
+# Editor / OS
+*.swp
+.DS_Store
