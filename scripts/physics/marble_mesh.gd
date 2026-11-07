@@ -41,6 +41,7 @@ static func build(radius: float, rings := 12, segments := 24) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
 	m.roughness = 0.15
 	m.metallic_specular = 0.8
 	mesh.surface_set_material(0, m)

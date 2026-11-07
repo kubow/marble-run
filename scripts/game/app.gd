@@ -36,8 +36,35 @@ func _parse_dev_args() -> void:
 		request = {"kind": "endless", "code": Hash64.to_hex(ENDLESS_SEED)}
 	if not request.is_empty():
 		_go(GAME_SCENE)
+	if dev_args.has("bench"):
+		_bench(int(dev_args.get("bench-frames", "1200")))
 	if dev_args.has("shot"):
 		_screenshot_later(str(dev_args.shot), int(dev_args.get("shot-frames", "180")))
+
+
+## Prints frame/physics timings and render counters, then quits.
+func _bench(frames: int) -> void:
+	for i in 120:
+		await get_tree().process_frame
+	var t0 := Time.get_ticks_usec()
+	var worst := 0
+	var last := t0
+	var phys := 0.0
+	var prims := 0.0
+	var calls := 0.0
+	for i in frames:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		worst = maxi(worst, now - last)
+		last = now
+		phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	var avg := (Time.get_ticks_usec() - t0) / float(frames)
+	print("BENCH frames=%d avg_frame=%.2f ms (%.0f fps) worst=%.2f ms physics_step=%.3f ms primitives=%.0f draw_calls=%.0f static_mem=%.1f MB" % [
+		frames, avg / 1000.0, 1e6 / avg, worst / 1000.0, phys / frames, prims / frames, calls / frames,
+		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0])
+	get_tree().quit()
 
 
 func _screenshot_later(path: String, frames: int) -> void:
@@ -104,6 +131,7 @@ func can_continue() -> bool:
 
 func continue_last() -> void:
 	var l := save.last
+	var old_version := int(l.get("generator_version", TrackGenerator.VERSION))
 	match str(l.get("kind", "")):
 		"level":
 			start_level(int(l.get("level", save.unlocked_level)))
@@ -114,6 +142,7 @@ func continue_last() -> void:
 			start_endless(p.value if p.ok else ENDLESS_SEED)
 		_:
 			start_level(save.unlocked_level)
+	request["saved_generator_version"] = old_version
 
 
 func goto_menu() -> void:

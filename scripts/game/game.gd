@@ -137,7 +137,11 @@ func _start_from_request() -> void:
 	_spawn(0, true)
 	lives = LIVES
 	hud.set_lives(lives)
-	hud.toast("Drag or ← → to steer", 2.5)
+	var saved_v := int(req.get("saved_generator_version", TrackGenerator.VERSION))
+	if saved_v != TrackGenerator.VERSION:
+		hud.toast("Saved with generator v%d - layout may differ in v%d" % [saved_v, TrackGenerator.VERSION], 4.0)
+	else:
+		hud.toast("Drag or ← → to steer", 2.5)
 
 
 func _spawn(index: int, snap_camera: bool) -> void:
