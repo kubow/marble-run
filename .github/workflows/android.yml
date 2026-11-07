@@ -22,16 +22,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Cache Godot and export templates
         id: cache-godot
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/godot
@@ -83,14 +83,21 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           fi
 
-      - name: Set version code from run number
-        run: sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+      - name: Set version code (run number) and version name (tag)
+        run: |
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+            sed -i "s/^version\/name=.*/version\/name=\"$VER\"/" export_presets.cfg
+            sed -i "s/^config\/version=.*/config\/version=\"$VER\"/" project.godot
+          fi
+          grep -E "^version/(code|name)=" export_presets.cfg
 
       - name: Build debug APK
         run: GODOT="$GODOT_BIN" tools/build_android.sh debug
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: marble-run-debug-apk
           path: builds/marble-run-debug.apk
@@ -98,15 +105,27 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: builds/test_results.txt
           if-no-files-found: ignore
 
+      - name: Name APK after the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cp builds/marble-run-debug.apk "builds/marble-run-${GITHUB_REF_NAME}.apk"
+
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: builds/marble-run-debug.apk
+          files: builds/marble-run-${{ github.ref_name }}.apk
+          fail_on_unmatched_files: true
           generate_release_notes: true
+          body: |
+            ## Install on Android
+            1. Open this page on the phone and download `marble-run-${{ github.ref_name }}.apk`.
+            2. Open the file and allow installing apps from this source when asked.
+            3. Updating: install over the previous version (same signing key).
+
+            Debug-signed build for arm64 Android devices; no permissions requested, works fully offline.

@@ -131,8 +131,11 @@ suite, sets `version/code` to the run number, and builds the debug APK.
 
 * Every run: APK available as the `marble-run-debug-apk` workflow artifact
   (Actions tab → run → Artifacts; requires GitHub login, kept 90 days).
-* Tags: `git tag v0.2.0 && git push origin v0.2.0` attaches the APK to a GitHub
-  Release — a public link you can open on the phone to download and install.
+* Tags: `git tag v0.3.0 && git push origin v0.3.0` builds with version name
+  `0.3.0` and publishes a GitHub Release with `marble-run-v0.3.0.apk` and
+  install instructions — a public link you can open on the phone.
+* Actions are pinned to their Node 24 majors (checkout v7, setup-java v6,
+  cache v6, upload-artifact v7, action-gh-release v3).
 
 Optional but recommended — sign every CI build with the same key, so new builds
 install over old ones:
