@@ -33,22 +33,34 @@ var steer_accel := 4.0      ## Lateral acceleration the player can produce (m/s^
 var min_slack := 0.25       ## Required free lateral room for the ball centre (m).
 var obstacle_hit_keep := 0.5 ## Pessimistic speed fraction kept after an obstacle module.
 var tube_grip := 2.0        ## Lateral g a closed tube can provide.
-var wire_safety := 0.6      ## Fraction of the geometric wire-cradle grip trusted.
+var wire_safety := 0.5      ## Fraction of the geometric wire-cradle grip trusted.
 var jump_margin := 0.4      ## Marble must land this far past the start of the landing (m).
 var jump_keep := 0.85       ## Pessimistic extra speed fraction kept after a landing.
+# Player skill: at difficulty > 1 sections may require braking or boosting.
+# skill (0..1) scales the deceleration/acceleration the player is assumed to
+# apply over the run-up; only CONTROL_SHARE of the physically possible change is
+# counted, so demanded inputs are always comfortably achievable.
+var brake_accel := 4.0      ## Full-brake deceleration of the rolling marble (m/s^2).
+var boost_accel := 2.3      ## Full-boost acceleration of the rolling marble (m/s^2).
+const CONTROL_SHARE := 0.6
+const LIMIT_MERGE := 4.0    ## Speed limits closer than this (m) are merged.
 
 
 func describe() -> String:
-	return "damp=%s lo=%s hi=%s min=%s grip=%s crest=%s down=%s up=%s vmax=%s narrow=%s steer=%s slack=%s hit=%s tube=%s wire=%s jmargin=%s jkeep=%s" % [
+	return "damp=%s lo=%s hi=%s min=%s grip=%s crest=%s down=%s up=%s vmax=%s narrow=%s steer=%s slack=%s hit=%s tube=%s wire=%s jmargin=%s jkeep=%s brake=%s boost=%s share=%s" % [
 		damp_eff, lo_damp_mul, hi_damp_mul, min_speed, wall_grip, crest_safety,
 		max_down_slope, max_up_slope, max_speed, narrow_max_speed, steer_accel, min_slack, obstacle_hit_keep,
-		tube_grip, wire_safety, jump_margin, jump_keep]
+		tube_grip, wire_safety, jump_margin, jump_keep, brake_accel, boost_accel, CONTROL_SHARE]
 
 
-## Returns {ok, reason, v_lo, v_hi, v_min}. `style` is the environment
-## geometry ("trough", "tube", "wires") the module is built with.
-func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = -1, style := "trough") -> Dictionary:
-	var res := {"ok": true, "reason": "", "v_lo": v_lo, "v_hi": v_hi, "v_min": v_lo}
+## Returns {ok, reason, v_lo, v_hi, v_min, limits}. `style` is the environment
+## geometry ("trough", "tube", "wires") the module is built with. `skill` (0..1)
+## allows sections that need braking/boosting, given `runup` metres of track
+## before the module. `limits` lists the speed requirements found:
+## Vector3(s, v_min, v_max) with v_min = 0 / v_max = INF when unused.
+func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = -1, style := "trough", skill := 0.0, runup := 0.0) -> Dictionary:
+	var res := {"ok": true, "reason": "", "v_lo": v_lo, "v_hi": v_hi, "v_min": v_lo, "limits": []}
+	var limits: Array = res.limits
 	if def.min_entry_speed > 0.0 and v_lo < def.min_entry_speed:
 		return _fail(res, "entry speed %.2f < required %.2f" % [v_lo, def.min_entry_speed])
 	var c_lo := damp_eff * lo_damp_mul
@@ -93,19 +105,52 @@ func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = 
 				grip = wall_grip * wall_ratio
 			var cap := G * (sin(bank) + grip)
 			if hi * hi * kap > cap:
-				return _fail(res, "too fast for curve (%.2f m/s, r=%.1f m)" % [hi, 1.0 / kap])
+				var nh := _brake_to(hi, sqrt(cap / kap), runup + def.ring_dist[k], skill)
+				if nh < 0.0:
+					return _fail(res, "too fast for curve (%.2f m/s, r=%.1f m)" % [hi, 1.0 / kap])
+				_add_limit(limits, sk, 0.0, nh)
+				hi = nh
+				lo = minf(lo, nh * 0.8)
 		# Crests: do not leave the surface (a closed tube holds the marble).
 		var vc := def.ring_vcurv[k]
 		if vc < 0.0 and not (styled and style == "tube"):
 			var cos_t := 1.0 / sqrt(1.0 + slope * slope)
 			if hi * hi * -vc > crest_safety * G * cos_t:
-				return _fail(res, "would jump on crest (%.2f m/s)" % hi)
-		if hi > max_speed:
-			return _fail(res, "too fast (%.2f m/s)" % hi)
-		if def.ring_half_w[k] < 0.8 * def.spec.half_width and hi > narrow_max_speed:
-			return _fail(res, "too fast for narrow section (%.2f m/s)" % hi)
+				var nh := _brake_to(hi, sqrt(crest_safety * G * cos_t / -vc), runup + def.ring_dist[k], skill)
+				if nh < 0.0:
+					return _fail(res, "would jump on crest (%.2f m/s)" % hi)
+				_add_limit(limits, sk, 0.0, nh)
+				hi = nh
+				lo = minf(lo, nh * 0.8)
+		var cap_v := max_speed
+		if def.ring_half_w[k] < 0.8 * def.spec.half_width:
+			cap_v = minf(cap_v, narrow_max_speed)
+		if hi > cap_v:
+			var nh := _brake_to(hi, cap_v, runup + def.ring_dist[k], skill)
+			if nh < 0.0:
+				return _fail(res, "too fast (%.2f m/s, limit %.1f)" % [hi, cap_v])
+			_add_limit(limits, sk, 0.0, nh)
+			hi = nh
+			lo = minf(lo, nh * 0.8)
 		# Jumps: fly both speed bounds over the gap and continue after landing.
 		if def.is_jump() and is_equal_approx(sk, def.takeoff_s()):
+			var win := jump_window(def)
+			if win.y - win.x < 1.0:
+				return _fail(res, "jump speed window too narrow")
+			var run := runup + def.ring_dist[k]
+			if hi > win.y:
+				var nh := _brake_to(hi, win.y, run, skill)
+				if nh < 0.0:
+					return _fail(res, "too fast for jump (%.1f > %.1f m/s)" % [hi, win.y])
+				_add_limit(limits, sk, 0.0, nh)
+				hi = nh
+				lo = minf(lo, hi)
+			if lo < win.x:
+				if skill <= 0.0 or win.x * win.x - lo * lo > 2.0 * boost_accel * skill * run * CONTROL_SHARE:
+					return _fail(res, "too slow for jump (%.1f < %.1f m/s)" % [lo, win.x])
+				_add_limit(limits, sk, win.x, INF)
+				lo = win.x
+				hi = maxf(hi, lo)
 			var jl := jump_flight(def, lo)
 			var jh := jump_flight(def, hi)
 			if not jl.ok:
@@ -178,6 +223,50 @@ func jump_flight(def: TrackModuleDef, v: float) -> Dictionary:
 		s += 0.05
 		steps += 1
 	return {"ok": false, "reason": "overshoots the module"}
+
+
+## Speed after braking from `hi` to `v_safe` within `run` metres, or -1 if the
+## player (at this skill) cannot. Hands-off safe speeds pass unchanged.
+func _brake_to(hi: float, v_safe: float, run: float, skill: float) -> float:
+	var target := v_safe * 0.95
+	if hi <= v_safe:
+		return hi
+	if skill <= 0.0:
+		return -1.0
+	if hi * hi - target * target <= 2.0 * brake_accel * skill * run * CONTROL_SHARE:
+		return target
+	return -1.0
+
+
+static func _add_limit(limits: Array, s: float, vmin: float, vmax: float) -> void:
+	if not limits.is_empty():
+		var last: Vector3 = limits[-1]
+		if s - last.x < LIMIT_MERGE:
+			limits[-1] = Vector3(last.x, maxf(last.y, vmin), minf(last.z, vmax))
+			return
+	limits.append(Vector3(s, vmin, vmax))
+
+
+static var _window_cache: Dictionary = {}
+
+
+## Take-off speeds for which the jump clears the gap and lands before the end:
+## Vector2(min, max) with 0.3 m/s safety margins (empty if min >= max).
+func jump_window(def: TrackModuleDef) -> Vector2:
+	var key := "%s/%s/%s" % [def.id, jump_margin, def.length]
+	if _window_cache.has(key):
+		return _window_cache[key]
+	var vmin := INF
+	var vmax := -INF
+	var v := 0.5
+	while v <= 25.0:
+		if jump_flight(def, v).ok:
+			vmin = minf(vmin, v)
+			vmax = maxf(vmax, v)
+		v += 0.1
+	var w := Vector2(vmin + 0.3, vmax - 0.3) if vmin < INF else Vector2(INF, -INF)
+	_window_cache[key] = w
+	return w
 
 
 func _fail(res: Dictionary, reason: String) -> Dictionary:

@@ -370,5 +370,14 @@ func floor_transform(t: float, u: float) -> Transform3D:
 	return Transform3D(Basis(right, up, -tangent), origin)
 
 
+## 3D track distance from the entry to horizontal arc position s.
+func dist_at_s(s: float) -> float:
+	for k in range(1, ring_s.size()):
+		if ring_s[k] >= s:
+			var f := (s - ring_s[k - 1]) / maxf(ring_s[k] - ring_s[k - 1], 1e-6)
+			return lerpf(ring_dist[k - 1], ring_dist[k], f)
+	return length_3d
+
+
 func has_obstacles() -> bool:
 	return not obstacle_layouts.is_empty()

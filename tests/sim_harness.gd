@@ -52,8 +52,10 @@ func run(max_seconds: float, steer_fn := Callable()) -> Dictionary:
 		var pos := marble.global_position
 		tracker.update(pos)
 		marble.steer_axis = Autopilot.right_of(tracker.tangent)
+		marble.forward_axis = tracker.tangent
 		if autopilot:
 			marble.steer = autopilot.steer(tracker, marble.linear_velocity)
+			marble.throttle = autopilot.throttle(tracker, marble.speed())
 		elif steer_fn.is_valid():
 			marble.steer = steer_fn.call(self)
 		var sp := marble.speed()

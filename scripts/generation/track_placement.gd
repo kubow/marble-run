@@ -10,6 +10,7 @@ var style := "trough"                   ## Geometry style: trough | tube | wires
 var env_left_in := 0                    ## Generator state before this module (for backtracking).
 var blend_in := true                    ## Styled geometry blends from the standard profile at entry.
 var blend_out := true                   ## ... and back to it at the exit.
+var limits: Array = []                  ## Speed requirements: Vector3(s, v_min, v_max).
 var transform := Transform3D.IDENTITY   ## World transform of the entry connector.
 var exit_transform := Transform3D.IDENTITY
 var yaw_in := 0.0                       ## Net heading at entry (radians).

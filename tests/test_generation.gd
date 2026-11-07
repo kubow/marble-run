@@ -156,13 +156,48 @@ func test_bounded_attempts() -> void:
 
 
 func test_validator_accepts_every_module() -> void:
-	# Every placed module re-validates with its recorded entry speeds.
+	# Every placed module re-validates with its recorded entry speeds, the
+	# level's skill and the same run-up, and reproduces its speed limits.
 	var v := ReachabilityValidator.new()
 	for l in _all_levels().slice(0, 200):
-		for p in l.placements:
-			var r := v.check_module(p.def, p.v_lo_in, p.v_hi_in, p.variant, p.style)
+		var skill := TrackGenerator.skill_for(l.config.difficulty)
+		for i in l.placements.size():
+			var p: TrackPlacement = l.placements[i]
+			var runup: float = l.placements[i - 1].def.length_3d if i > 0 else 0.0
+			var style := "trough" if p.def.id == "finish" else p.style
+			var r := v.check_module(p.def, p.v_lo_in, p.v_hi_in, p.variant, style, skill if p.def.id != "start" else 0.0, runup)
 			if not check(r.ok, "%s in %s: %s" % [p.def.id, l.config.to_code(), r.reason]):
 				return
+			check_eq(r.limits.size(), p.limits.size(), "speed limits reproduced")
+
+
+func test_speed_demands_follow_difficulty() -> void:
+	# Level 1 is hands-off safe (no speed limits); harder levels demand braking
+	# and boosting, more as difficulty rises.
+	var by_band := {"easy": 0, "mid": 0, "hard": 0}
+	var counts := {"easy": 0, "mid": 0, "hard": 0}
+	for l in _all_levels():
+		var n := 0
+		for p in l.placements:
+			n += p.limits.size()
+		if l.config.difficulty < 1.5:
+			check_eq(n, 0, "difficulty 1 has no speed demands")
+		var band := "easy" if l.config.difficulty < 3.0 else ("mid" if l.config.difficulty < 6.0 else "hard")
+		by_band[band] += n / maxf(l.placements.size(), 1)
+		counts[band] += 1
+	for b in by_band:
+		by_band[b] = snappedf(by_band[b] / maxf(counts[b], 1), 0.01)
+	note("speed demands per module: %s" % str(by_band))
+	check(by_band.hard > by_band.mid and by_band.mid > by_band.easy, "demands grow with difficulty")
+
+
+func test_jump_windows() -> void:
+	var v := ReachabilityValidator.new()
+	for d in gen.catalog.modules:
+		if d.is_jump():
+			var w := v.jump_window(d)
+			note("%s take-off window %.1f..%.1f m/s" % [d.id, w.x, w.y])
+			check(w.y - w.x >= 1.0, "%s has a usable take-off speed window" % d.id)
 
 
 func test_obstacle_layouts_valid() -> void:
@@ -196,4 +231,6 @@ const GOLDEN := {
 		4: "BCBF1D54A74ED1E1", 5: "6B504C161EBD7EC6", 10: "6389BCB380BC8603"},
 	2: {1: "916CAFE2A31FBEFD", 2: "21F6E2967D15A979", 3: "7CEDC5F2D7CD441A",
 		4: "08C7167BE04E41A8", 5: "5B61FBB0CBCACAA1", 10: "3F173835E9A487D6"},
+	3: {1: "58EAE167C4A0A242", 2: "FCB93F3142FED78A", 3: "D87F5DD34017FA12",
+		4: "655699C72816A152", 5: "2006D14692099DF2", 10: "4CAA08D8A2E680FD"},
 }

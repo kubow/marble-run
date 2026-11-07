@@ -79,6 +79,7 @@ func test_autopilot_traverses_levels() -> void:
 	var results := {}
 	var failed: Array = []
 	var configs: Array = []
+	var hands_off := 0
 	for n in range(1, 13):
 		configs.append(LevelProgression.config_for_level(n))
 	for i in 18:
@@ -90,9 +91,17 @@ func test_autopilot_traverses_levels() -> void:
 		var r: Dictionary = await h.run(level.total_length() / 1.5 + 20.0)
 		await h.dispose()
 		results[r.result] = results.get(r.result, 0) + 1
+		# Same level with no input at all: harder levels should not allow this.
+		if cfg.difficulty >= 2.0:
+			var h0 := SimHarness.new(tree, level)
+			var r0: Dictionary = await h0.run(level.total_length() / 1.5 + 20.0)
+			await h0.dispose()
+			if r0.result == "finished":
+				hands_off += 1
 		if r.result != "finished":
 			failed.append("%s %s at module %d (%s) speed max %.1f" % [cfg.to_code(), r.result, r.module, r.module_id, r.max_speed])
-	note("autopilot results: %s" % str(results))
+	note("autopilot (steer + throttle) results: %s; hands-off finishes at difficulty >= 2: %d" % [str(results), hands_off])
+	check(hands_off <= configs.size() / 3, "most levels from difficulty 2 demand player input")
 	for f in failed:
 		note("  " + f)
 	check(results.get("finished", 0) >= configs.size() - 1, "autopilot finishes generated levels")
@@ -196,3 +205,32 @@ func test_wire_calibration() -> void:
 	note("wires: %s, late speed %.2f m/s -> effective damping %.3f (validator pessimistic %.3f)" % [
 		r.result, v_term, g5 / maxf(v_term, 0.01), ReachabilityValidator.new().damp_eff * ReachabilityValidator.new().lo_damp_mul])
 	check_eq(r.result, "finished", "wires straight finished")
+
+
+func test_wire_entry_is_smooth() -> void:
+	# Regression: the marble used to be kicked up where the wires begin (flush
+	# leading edges / wire ends inside the funnel). Enter at 6-9 m/s, coasting
+	# and boosting, straight and curved: it must stay low and finish.
+	var worst := 0.0
+	for v0 in [6.0, 8.0, 9.0]:
+		for thr in [0.0, 1.0]:
+			for mid in ["straight", "gentle_left"]:
+				var level := gen.assemble(PackedStringArray(["start", mid, "straight", "finish"]), PackedInt32Array(), PackedStringArray(["classic", "wires", "wires", "classic"]))
+				var h := SimHarness.new(tree, level)
+				var p: TrackPlacement = level.placements[1]
+				var fwd := -p.transform.basis.z
+				h.marble.respawn(Transform3D(Basis(), p.transform.origin - fwd * 0.5 + Vector3.UP * 0.33), fwd * v0)
+				h.tracker.reset(1)
+				var st := {"maxy": 0.0}
+				var f := func(sim: SimHarness) -> float:
+					sim.marble.forward_axis = sim.tracker.tangent
+					sim.marble.throttle = thr if sim.tracker.current == 1 else 0.0
+					if sim.tracker.current == 1 and sim.ticks > 5:
+						st.maxy = maxf(st.maxy, sim.tracker.offset.y)
+					return 0.0
+				var r: Dictionary = await h.run(20.0, f)
+				await h.dispose()
+				worst = maxf(worst, st.maxy)
+				check_eq(r.result, "finished", "%s wires at %.0f m/s throttle %.0f" % [mid, v0, thr])
+	note("max marble height entering wires: %.2f m (resting 0.27)" % worst)
+	check(worst < 0.4, "no kick-up at the wire entry")

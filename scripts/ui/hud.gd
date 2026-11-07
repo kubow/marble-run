@@ -17,6 +17,7 @@ var _lives: Label
 var _debug: Label
 var _fps: Label
 var _toast: Label
+var _prompt: Label
 var _toast_time := 0.0
 var _pause_panel: Control
 var _end_panel: Control
@@ -110,6 +111,14 @@ func _ready() -> void:
 	_toast.offset_right = 400
 	root.add_child(_toast)
 
+	_prompt = _outlined(UiTheme.label("", 56, Color.WHITE))
+	_prompt.set_anchors_preset(Control.PRESET_CENTER)
+	_prompt.offset_left = -300
+	_prompt.offset_right = 300
+	_prompt.offset_top = 40
+	_prompt.offset_bottom = 120
+	root.add_child(_prompt)
+
 	_pause_panel = _panel(root, "Paused", [
 		["Resume", func(): resume_pressed.emit()],
 		["Restart", func(): restart_pressed.emit()],
@@ -196,6 +205,11 @@ func set_lives(n: int) -> void:
 func set_debug(text: String) -> void:
 	_debug.text = text
 	_debug.visible = text != ""
+
+
+func set_prompt(text: String, color: Color) -> void:
+	_prompt.text = text
+	_prompt.add_theme_color_override("font_color", color)
 
 
 func toast(text: String, seconds := 1.5) -> void:

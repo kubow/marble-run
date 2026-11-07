@@ -116,6 +116,8 @@ func test_endless_session_physics() -> void:
 		max_active = maxi(max_active, view.active_indices().size())
 		marble.steer_axis = Autopilot.right_of(session.tracker.tangent)
 		marble.steer = ap.steer(session.tracker, marble.linear_velocity)
+		marble.forward_axis = session.tracker.tangent
+		marble.throttle = ap.throttle(session.tracker, marble.speed())
 		if i > 10 and session.tracker.is_off_track(marble.global_position):
 			fell = true
 			break

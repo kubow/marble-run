@@ -34,8 +34,12 @@
 * Jump validation flies the marble centre ballistically along the track; spin,
   lateral offset and air drag are ignored (margins cover typical cases; the
   physics tests fly real jumps).
-* Validation assumes no throttle. A player can boost past curve/crest limits or
-  brake before a climb or jump — that is intended as player skill/risk.
+* From level 2, sections may require braking or boosting (signposted). The
+  demanded speed change uses at most 60 % of what is physically possible over
+  the run-up, but a player who ignores the signs will fall — that is the game.
+  The validator still cannot guarantee a human finds every level fair.
+* Speed demands are conservative: some signposted sections are survivable
+  without braking (3–5 of 15 levels can still be finished hands-off).
 * At the end of a tube, a marble riding high on the tube wall comes down onto the
   open track as the profile blends back; at high speed this can throw it off.
 * Single-tick vertical velocity blips (≈0.1 m/s, no lift-off) occur when the

@@ -66,7 +66,11 @@ different styles is the standard ring.
   three narrow flat strips on the wire surfaces facing the marble — round wire
   meshes made the marble chatter between three convex prisms and lose a lot of
   speed. The side wires leave 1.4 cm of play, so the marble rests on the bottom
-  wire; lateral grip is `0.6 × dx/dy` g of the side-wire contact geometry.
+  wire; lateral grip is `0.5 × dx/dy` g of the side-wire contact geometry.
+  Inside the funnel the side wires flare out to the funnel walls, and the wire
+  strips start 8 cm below the funnel floor and rise to it while the floor sinks
+  away, so the marble never meets the leading edge of either surface (a flush
+  edge kicked it up at speed).
 * **jumps** (`jump`, `jump_big`): a parabolic kicker up to the lip, an air gap
   with no geometry, and a landing whose slope is steepest at the start, with
   wider, taller walls. Collision is split into two strips at the gap.
@@ -113,7 +117,7 @@ A candidate is accepted only if all constraints pass:
    `r_a + r_b + 0.6 m` unless the vertical separation is ≥ 4 m.
 
 Termination: attempts are bounded by the budget; the finish loop only removes
-modules. Measured over 1000 seeds (generator v2): max 167 attempts, ≈ 20 ms mean / 35 ms
+modules. Measured over 1000 seeds (generator v3): max 68 attempts, ≈ 20 ms mean / 33 ms
 max per level on desktop, 0 short levels.
 
 ## Reachability validator
@@ -148,9 +152,27 @@ speed (`c × 0.5`), and rejects a module when:
   are treated as blocking their full sweep), or consecutive lanes require more
   than half the available steering acceleration at the optimistic speed.
 
-Validation assumes **no throttle input**: every level is meant to be completable
-by steering alone. Boost (3.5 N along the track, up to 15 m/s) and brake (6 N
-against the motion, never reversing) are player tools that can also cause falls.
+### Skill demands (generator v3)
+
+At difficulty 1 everything above must hold **hands-off**. Above that,
+`TrackGenerator.skill_for(difficulty)` (0 … 0.9) lets the validator accept a
+section the marble would *not* survive on its own if the player can fix the
+speed in the run-up (the previous module plus the distance into this one):
+
+* too fast for a curve, crest, narrow section or the speed cap → accepted if
+  braking at `4.0 × skill` m/s² over 60 % of the run-up reaches 95 % of the safe
+  speed; the optimistic speed is then capped to it and the pessimistic speed
+  assumes over-braking to 80 %;
+* a jump has a take-off window (`jump_window`, e.g. 3.8–9.2 m/s for `jump`);
+  arriving too fast needs braking as above, too slow needs boosting at
+  `2.3 × skill` m/s² over 60 % of the run-up.
+
+Each accepted demand is stored on the placement as a speed limit
+`Vector3(s, v_min, v_max)`. The game puts a red (brake) or green (boost) sign
+8 m before it and shows BRAKE!/BOOST! when the current speed won't make it; the
+autopilot uses the same `Autopilot.speed_advice` to brake/boost. Boost is 3.5 N
+along the track (up to 15 m/s); brake is 6 N against the motion and never
+reverses.
 
 This is deliberately conservative and still **does not prove** a level is
 completable. `tests/test_physics.gd` additionally drives an autopilot through 30

@@ -38,7 +38,7 @@ func start_level(cfg: GeneratorConfig) -> void:
 
 func start_endless(p_seed: int) -> void:
 	endless = true
-	stream = generator.create_endless(p_seed, 1.0)
+	stream = generator.create_endless(p_seed)
 	code = Hash64.to_hex(p_seed)
 	var t0 := Time.get_ticks_usec()
 	for i in ahead + 1:

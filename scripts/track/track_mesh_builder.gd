@@ -132,9 +132,42 @@ static func _channel_loop(def: TrackModuleDef, k: int, style: String, f: float) 
 	return pts
 
 
-## Wire centres (bottom, left, right) in the ring plane.
-static func wire_centres(spec: TrackSpec) -> Array:
-	return [Vector2(0.0, -spec.wire_radius), Vector2(-spec.wire_side_dx, spec.wire_side_y), Vector2(spec.wire_side_dx, spec.wire_side_y)]
+## Wire centres (bottom, left, right) in the ring plane. `flare` moves the side
+## wires outwards (used inside the funnel so they sit at the funnel walls and no
+## wire end ever points at the marble).
+static func wire_centres(spec: TrackSpec, flare := 0.0) -> Array:
+	var dx := spec.wire_side_dx + flare
+	return [Vector2(0.0, -spec.wire_radius), Vector2(-dx, spec.wire_side_y), Vector2(dx, spec.wire_side_y)]
+
+
+const WIRE_DIP := 0.08
+
+
+## Vertical offsets (wire strips, funnel surface) at ring k for a seamless
+## handover between the funnel floor and the wires: the wires start below the
+## floor and rise to it while the floor sinks away beneath them, so the marble
+## never meets the leading edge of either surface.
+static func wire_dips(def: TrackModuleDef, k: int, bin: bool, bout: bool) -> Vector2:
+	var b := TrackSpec.WIRE_BLEND
+	var ws := b * 2.0 / 3.0
+	var se := b * 4.0 / 3.0
+	var t := def.ring_s[k] / def.length
+	var strip := 0.0
+	var surf := 0.0
+	for side in [[bin, t], [bout, 1.0 - t]]:
+		if not side[0]:
+			continue
+		var tt: float = side[1]
+		if tt < b:
+			strip -= WIRE_DIP * (1.0 - TrackModuleDef._smooth(ws, b, tt))
+		surf -= WIRE_DIP * TrackModuleDef._smooth(b, se, tt) if tt < se + 1e-4 else 0.0
+	return Vector2(strip, surf)
+
+
+## Side-wire flare at ring k: how much wider the funnel still is than the cradle.
+static func wire_flare(def: TrackModuleDef, k: int, bin: bool, bout: bool) -> float:
+	var f := blend(def, k, "wires", bin, bout)
+	return maxf(surface_params(def, k, "wires", f).x - def.spec.narrow_half_width, 0.0)
 
 
 ## Collision for each wire: a narrow flat strip on the wire surface facing the
@@ -145,10 +178,10 @@ static func wire_centres(spec: TrackSpec) -> Array:
 const WIRE_STRIP_HALF := 0.045
 
 
-static func wire_contact_strips(spec: TrackSpec) -> Array:
+static func wire_contact_strips(spec: TrackSpec, flare := 0.0) -> Array:
 	var ball := Vector2(0.0, spec.ball_radius)
 	var out: Array = []
-	for c in wire_centres(spec):
+	for c in wire_centres(spec, flare):
 		var n: Vector2 = (ball - c).normalized()
 		var cp: Vector2 = c + n * spec.wire_radius
 		var d := Vector2(n.y, -n.x)
@@ -216,13 +249,14 @@ static func collision_strips(def: TrackModuleDef, style := "trough", bin := true
 			if bout:
 				strips.append(_surface_strip(def, _ring_range(def, 1.0 - b * 4.0 / 3.0, 1.0), style, bin, bout))
 			var ks := _ring_range(def, b * 2.0 / 3.0 if bin else 0.0, 1.0 - b * 2.0 / 3.0 if bout else 1.0)
-			var contacts := wire_contact_strips(def.spec)
-			for w in contacts.size():
+			for w in 3:
 				var rings: Array = []
 				for k in ks:
+					var contacts := wire_contact_strips(def.spec, wire_flare(def, k, bin, bout))
+					var dip := Vector2(0.0, wire_dips(def, k, bin, bout).x)
 					var ring := PackedVector3Array()
 					for p in contacts[w]:
-						ring.append(_to3d(def, k, p))
+						ring.append(_to3d(def, k, p + dip))
 					rings.append(ring)
 				strips.append({"key": "w%d" % w, "rings": rings, "entry": ks[0] == 0, "exit": ks[-1] == last})
 		"tube":
@@ -241,9 +275,10 @@ static func _surface_strip(def: TrackModuleDef, ks: Array, style: String, bin: b
 	var rings: Array = []
 	for k in ks:
 		var f := blend(def, k, style, bin, bout)
+		var dip := wire_dips(def, k, bin, bout).y if style == "wires" else 0.0
 		var ring := PackedVector3Array()
 		for p in surface_ring_2d(def, k, style, f):
-			ring.append(_to3d(def, k, p))
+			ring.append(_to3d(def, k, p + Vector2(0.0, dip)))
 		rings.append(ring)
 	return {"key": "surface", "rings": rings, "entry": ks[0] == 0, "exit": ks[-1] == def.ring_count() - 1}
 
@@ -454,11 +489,16 @@ static func build_mesh(def: TrackModuleDef, style := "trough", bin := true, bout
 			var ks := _ring_range(def, b * 2.0 / 3.0 if bin else 0.0, 1.0 - b * 2.0 / 3.0 if bout else 1.0)
 			var wire_col := def.color.lerp(Color("d9dee8"), 0.6)
 			var flat := func(_k: int, _e: int, _a: Vector2, _b: Vector2, _pi: int) -> Color: return wire_col
-			for c in wire_centres(def.spec):
-				var loops: Array = []
-				for k in ks:
-					loops.append(_wire_loop(def.spec, c, false))
-				_sweep(metal, def, ks, loops, true, 0, flat, c)
+			for w in 3:
+				# Sweep each wire ring by ring (side wires flare in the funnel);
+				# normals point away from the wire centre of each ring.
+				for i in ks.size() - 1:
+					var pair := [ks[i], ks[i + 1]]
+					var loops: Array = []
+					var c0: Vector2 = wire_centres(def.spec, wire_flare(def, ks[i], bin, bout))[w]
+					for k in pair:
+						loops.append(_wire_loop(def.spec, wire_centres(def.spec, wire_flare(def, k, bin, bout))[w], false))
+					_sweep(metal, def, pair, loops, true, 0, flat, c0)
 			_brackets(metal, def, ks, wire_col.darkened(0.25))
 			metal.commit(mesh, metal_material())
 		_:

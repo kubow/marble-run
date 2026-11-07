@@ -9,11 +9,44 @@ var kd := 0.9
 var validator := ReachabilityValidator.new()
 
 
+## Speed advice from the speed limits ahead: -1 brake, 0 keep, +1 boost.
+## `decel` is the deceleration the caller plans to use when braking.
+static func speed_advice(tracker: TrackTracker, speed: float, decel := 2.5, lookahead := 30.0) -> int:
+	var brake := false
+	var boost := false
+	for idx in range(tracker.current, tracker.current + 3):
+		var p: TrackPlacement = tracker.placements.get(idx)
+		if p == null:
+			continue
+		for lim in p.limits:
+			var d: float = p.start_distance + p.def.dist_at_s(lim.x) - tracker.distance
+			if d < -0.5 or d > lookahead:
+				continue
+			if lim.z < INF:
+				var allowed := sqrt(lim.z * lim.z + 2.0 * decel * maxf(d, 0.0))
+				if speed > allowed - 0.2:
+					brake = true
+			if lim.y > 0.0 and speed < lim.y + 0.6:
+				boost = true
+	if brake:
+		return -1
+	return 1 if boost else 0
+
+
+func throttle(tracker: TrackTracker, speed: float) -> float:
+	return float(speed_advice(tracker, speed))
+
+
 static func right_of(tangent: Vector3) -> Vector3:
 	return Vector3(-tangent.z, 0.0, tangent.x).normalized()
 
 
 func steer(tracker: TrackTracker, velocity: Vector3) -> float:
+	# On wires there is no room to steer: lateral force only pushes the marble
+	# over a side wire, so a good player keeps their hands off.
+	var cur := tracker.current_placement()
+	if cur and cur.style == "wires" and cur.def.style_blend(tracker.local_t * cur.def.length, TrackSpec.WIRE_BLEND) > 0.95:
+		return 0.0
 	var right := right_of(tracker.tangent)
 	var lateral := tracker.offset.dot(right)
 	var lat_vel := velocity.dot(right)

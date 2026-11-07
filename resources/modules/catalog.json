@@ -3,7 +3,7 @@
 	"track": {
 		"half_width": 1.5,
 		"wall_height": 0.45,
-		"grade": -0.07,
+		"grade": -0.085,
 		"lip": 0.1,
 		"base_depth": 0.3,
 		"ring_spacing": 0.8,
@@ -16,13 +16,13 @@
 	},
 	"environment_run": [3, 6],
 	"environments": [
-		{ "id": "classic", "style": "trough", "tier": 1, "weight": 5, "exclude_types": ["jump"], "color": "#ffffff" },
-		{ "id": "tube", "style": "tube", "tier": 1, "weight": 2, "color": "#bde0fe",
+		{ "id": "classic", "style": "trough", "tier": 1, "weight": 4, "color": "#ffffff" },
+		{ "id": "tube", "style": "tube", "tier": 1, "weight": 1, "run": [2, 3], "color": "#bde0fe",
 			"types": ["straight", "gentle_curve", "sharp_curve", "s_curve", "downhill_ramp", "wavy"] },
-		{ "id": "wires", "style": "wires", "tier": 2, "weight": 2, "color": "#c0c8d8",
+		{ "id": "wires", "style": "wires", "tier": 2, "weight": 2, "run": [3, 5], "color": "#c0c8d8",
 			"types": ["straight", "gentle_curve", "sharp_curve", "s_curve", "downhill_ramp", "uphill_ramp"] },
-		{ "id": "ramps", "style": "trough", "tier": 3, "weight": 2, "color": "#ffffff",
-			"types": ["straight", "downhill_ramp", "uphill_ramp", "jump"], "boost": { "jump": 5.0, "downhill_ramp": 2.0 } }
+		{ "id": "ramps", "style": "trough", "tier": 2, "weight": 3, "run": [3, 6], "color": "#ffffff",
+			"types": ["straight", "downhill_ramp", "uphill_ramp", "jump", "gentle_curve"], "boost": { "jump": 5.0, "downhill_ramp": 1.5 } }
 	],
 	"modules": [
 		{ "id": "start", "type": "start", "length": 8, "tier": 0, "weight": 0, "difficulty": 0, "color": "#8d99ff" },
@@ -50,6 +50,8 @@
 
 		{ "id": "bridge", "type": "narrow_bridge", "length": 12, "width_scale": 0.42, "wall_scale": 0.0, "tier": 3, "weight": 4, "difficulty": 3, "color": "#ef476f" },
 
+		{ "id": "jump_small", "type": "jump", "length": 18, "kick_start_t": 0.2, "takeoff_t": 0.45, "land_t": 0.5, "kick_height": 0.5, "land_drop": -2.0,
+			"width_scale": 1.2, "wall_scale": 1.6, "window": "landing", "min_entry_speed": 2.5, "tier": 2, "weight": 4, "difficulty": 1.5, "color": "#ffa62b" },
 		{ "id": "jump", "type": "jump", "length": 22, "kick_start_t": 0.15, "takeoff_t": 0.4, "land_t": 0.47, "kick_height": 0.8, "land_drop": -3.0,
 			"width_scale": 1.25, "wall_scale": 1.8, "window": "landing", "min_entry_speed": 3.5, "tier": 3, "weight": 4, "difficulty": 2.5, "color": "#ff7b00" },
 		{ "id": "jump_big", "type": "jump", "length": 26, "kick_start_t": 0.12, "takeoff_t": 0.38, "land_t": 0.5, "kick_height": 1.0, "land_drop": -4.5,

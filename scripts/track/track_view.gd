@@ -81,6 +81,8 @@ func add_placement(p: TrackPlacement) -> void:
 		root.add_child(_end_wall(p.exit_transform, p.def.spec, false))
 	if p.def.id == "start":
 		root.add_child(_end_wall(p.transform, p.def.spec, true))
+	for lim in p.limits:
+		root.add_child(_speed_sign(p, lim))
 	if show_pillars and p.index % 2 == 0:
 		var top := p.transform.origin + Vector3(0, -p.def.spec.base_depth, 0)
 		root.add_child(TrackDecor.mesh_instance(TrackDecor.cylinder(0.12, 40.0), TrackDecor.mat(Color("e8e8ff")),
@@ -91,6 +93,24 @@ func add_placement(p: TrackPlacement) -> void:
 		"faces": TrackMeshBuilder.faces_from_strips(strips), "placement": p, "arch": arch,
 	}
 	_order.append(p.index)
+
+
+## Trackside sign ~8 m before a speed requirement: red = brake, green = boost.
+func _speed_sign(p: TrackPlacement, lim: Vector3) -> Node3D:
+	var s := maxf(lim.x - 8.0, 0.5)
+	var xf := p.def.floor_transform(s / p.def.length, 0.0)
+	var w := p.def.profile_at(s).x
+	var right := xf.basis.x.normalized()
+	var pos := p.transform * (xf.origin + right * (maxf(w, p.def.spec.tube_radius) + 0.7))
+	var n := Node3D.new()
+	var face := p.transform.basis * Vector3(-xf.basis.z.x, 0.0, -xf.basis.z.z)
+	n.transform = Transform3D(Basis.looking_at(-face.normalized(), Vector3.UP), pos)
+	var col := Color("ff4d6d") if lim.z < INF else Color("2ec27e")
+	n.add_child(TrackDecor.mesh_instance(TrackDecor.cylinder(0.05, 1.6), TrackDecor.mat(Color.WHITE), Transform3D(Basis(), Vector3(0, 0.4, 0))))
+	n.add_child(TrackDecor.mesh_instance(TrackDecor.box(Vector3(0.7, 0.7, 0.06)), TrackDecor.mat(Color.WHITE), Transform3D(Basis(), Vector3(0, 1.4, 0))))
+	n.add_child(TrackDecor.mesh_instance(TrackDecor.box(Vector3(0.56, 0.56, 0.08)), TrackDecor.mat(col), Transform3D(Basis(), Vector3(0, 1.4, 0))))
+	n.name = "SpeedSign"
+	return n
 
 
 ## Wall across the track at a connector. back=true places it behind (start).

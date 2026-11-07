@@ -5,13 +5,17 @@ and GDScript only. A marble rolls down an elevated toy-like track assembled from
 reusable modules by a deterministic, seeded generator. Steer, speed up or brake,
 avoid falling off, reach the finish.
 
-* 20 analytic track modules (straights, gentle/sharp curves, S-bends, ramps,
-  waves, funnel/bowl, narrow bridge, static and moving obstacles, jumps) defined
-  in `resources/modules/catalog.json` — no external models.
-* 4 alternating environments, switching every 3–6 modules:
-  **classic** open track, **tube** (closed see-through pipe), **wires** (three
-  metal wires — no room to steer, speed control is everything) and **ramps**
-  (jumps over air gaps).
+* 21 analytic track modules (straights, gentle/sharp curves, S-bends, ramps,
+  waves, funnel/bowl, narrow bridge, static and moving obstacles, three jump
+  sizes) defined in `resources/modules/catalog.json` — no external models.
+* 4 alternating environments: **classic** open track, **tube** (an occasional
+  closed see-through pipe), **wires** (three metal wires — no room to steer,
+  speed control is everything) and **ramps** (jumps over air gaps).
+* Difficulty that asks for skill: from level 2 the generator places sections
+  that need braking (fast curves, crests, too-fast jumps) or boosting (jumps you
+  would otherwise fall short of) — always with enough run-up, telegraphed by
+  red/green trackside signs and a BRAKE!/BOOST! prompt. Level 1 stays
+  hands-off safe. See [docs/BALANCE.md](docs/BALANCE.md).
 * Deterministic generation from 64-bit seeds, with overlap, slope, curvature,
   speed and obstacle-lane validation; ~12 ms per level on desktop.
 * Numbered levels with rising difficulty, custom seeds / shareable track codes,
@@ -37,9 +41,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how generation works,
 
 With mouse touch emulation enabled, dragging with the mouse also steers on desktop.
 
-Every level is validated to be completable **without** using speed up/brake;
-they are tools for skill — boosting into a wire curve or braking before a jump
-will make you fall.
+Red signs mean "brake before the next section", green signs "you'll need speed —
+boost". If you are going too fast or too slow for what's coming, a BRAKE! or
+BOOST! prompt appears. Steering on wires only pushes the marble over the side.
 
 Each level gives 3 lives; falling respawns you at the last checkpoint (blue
 arches). Getting stuck for 2.5 s also returns you to the checkpoint (no life lost).
@@ -108,10 +112,10 @@ in [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md).
 |---|---|
 | `test_hash` | SplitMix64 / FNV-1a against Python reference values, seed parsing, track codes |
 | `test_geometry` | connector frames, end-profile continuity, collision winding (trough up, tube inwards, wires outwards), shared join vertices per strip, jump gaps, mesh budget per style |
-| `test_generation` | 1000 seeds: determinism, variety (every module and environment used), connector alignment, no overlaps (independent brute-force check), start/finish/checkpoints, bounded attempts, validator re-check, obstacle lanes, version fingerprint, golden levels |
+| `test_generation` | 1000 seeds: determinism, variety (every module and environment used), speed demands grow with difficulty, jump take-off windows, connector alignment, no overlaps (independent brute-force check), start/finish/checkpoints, bounded attempts, validator re-check, obstacle lanes, version fingerprint, golden levels |
 | `test_persistence` | save/restore, versioned best times, seed replay after a simulated restart |
 | `test_endless` | stream determinism, 10 000 streamed modules without overlap, difficulty ramp, isolation from level generation, 90 s physics run with streaming collision |
-| `test_physics` | no-input smoke run, damping calibration (trough and wires), seam test across 12 joins, autopilot traversal of 30 generated levels, each environment without input, jump flight, braking before a jump fails, boost/brake response |
+| `test_physics` | no-input smoke run, damping calibration (trough and wires), seam test across 12 joins, autopilot (steer + throttle) traversal of 30 generated levels plus a check that most of them can't be finished hands-off, each environment without input, jump flight, braking before a jump fails, boost/brake response, smooth wire entry at 6–9 m/s |
 
 Passing these tests does **not** guarantee every generated track is completable
 by a human; see the limitations document.
@@ -137,7 +141,9 @@ docs/        ARCHITECTURE.md, LIMITATIONS.md, TEST_RESULTS.md
 builds/      build outputs (git-ignored)
 ```
 
-`tools/debug_level.gd` prints a level's module list and traces an autopilot run:
+`tools/level_stats.gd` prints the difficulty/variety table in
+[docs/BALANCE.md](docs/BALANCE.md). `tools/debug_level.gd` prints a level's
+module list (with speed limits) and traces an autopilot run:
 
 ```sh
 godot --headless --fixed-fps 60 --path . -s res://tools/debug_level.gd -- 94DF7E97AD170C8E-3-14 0

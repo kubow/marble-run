@@ -11,10 +11,11 @@ extends RefCounted
 ## catalogue changes generated levels. Bump VERSION and add the new value from
 ## config_fingerprint() to FINGERPRINTS (tests/test_generation.gd enforces it).
 
-const VERSION := 2
+const VERSION := 3
 const FINGERPRINTS := {
 	1: "D6902695074F881F",
 	2: "2BA1F9EF76FEB4C0",
+	3: "BBE1C1E2620D3A3A",
 }
 
 const FALLBACK_IDS := ["straight", "gentle_left", "gentle_right", "downhill"]
@@ -31,6 +32,16 @@ var catalog: ModuleCatalog
 var validator: ReachabilityValidator
 
 
+## How much braking/boosting a level may demand (0 = hands-off safe).
+static func skill_for(difficulty: float) -> float:
+	return clampf((difficulty - 1.2) / 3.0, 0.0, 0.9)
+
+
+## Preferred module difficulty for a target difficulty.
+static func preferred_difficulty(difficulty: float) -> float:
+	return clampf(0.7 + difficulty * 0.45, 0.7, 3.5)
+
+
 func _init(p_catalog: ModuleCatalog = null) -> void:
 	catalog = p_catalog if p_catalog != null else ModuleCatalog.get_default()
 	validator = ReachabilityValidator.new()
@@ -38,8 +49,8 @@ func _init(p_catalog: ModuleCatalog = null) -> void:
 
 ## Fingerprint of everything that influences generated levels.
 func config_fingerprint() -> String:
-	var text := "gen:%d|blend:%.3f,%.3f|fallback:%s|forced:%s|yaw:%.4f,%.4f,%.4f,%.4f|spawn:%.2f|rec:%.2f,%.2f|val:%s|cat:%s" % [
-		VERSION, TrackSpec.STYLE_BLEND, TrackSpec.WIRE_BLEND, ",".join(FALLBACK_IDS), ENDLESS_FORCED_ID, YAW_SOFT_LIMIT, YAW_HARD_LIMIT,
+	var text := "gen:%d|skill:%s|pref:%s|blend:%.3f,%.3f,%.3f|fallback:%s|forced:%s|yaw:%.4f,%.4f,%.4f,%.4f|spawn:%.2f|rec:%.2f,%.2f|val:%s|cat:%s" % [
+		VERSION, skill_for(4.0), preferred_difficulty(4.0), TrackSpec.STYLE_BLEND, TrackSpec.WIRE_BLEND, TrackMeshBuilder.WIRE_DIP, ",".join(FALLBACK_IDS), ENDLESS_FORCED_ID, YAW_SOFT_LIMIT, YAW_HARD_LIMIT,
 		ENDLESS_YAW_SOFT, ENDLESS_YAW_HARD, SPAWN_SPEED, RECOVERY_AFTER, RECOVERY_MAX,
 		validator.describe(), catalog.canonical_text()]
 	return Hash64.to_hex(Hash64.fnv1a64(text))
@@ -92,7 +103,7 @@ func _choose_env(st: State, difficulty: float) -> void:
 			continue
 		var ew := float(e.get("weight", 1.0))
 		if e.id == st.env.get("id", ""):
-			ew *= 0.3
+			ew *= 0.12
 		# A new run of a styled environment must change style, so the previous
 		# module's exit blending (decided when it was placed) stays correct.
 		var cur_style := str(st.env.get("style", "trough"))
@@ -102,7 +113,8 @@ func _choose_env(st: State, difficulty: float) -> void:
 		w.append(ew)
 	var pick := st.rng.rand_weighted(w)
 	st.env = envs[maxi(pick, 0)]
-	st.env_left = st.rng.randi_range(catalog.env_run.x, catalog.env_run.y)
+	var run: Array = st.env.get("run", [catalog.env_run.x, catalog.env_run.y])
+	st.env_left = st.rng.randi_range(int(run[0]), int(run[1]))
 
 
 # --- Level generation --------------------------------------------------------
@@ -161,7 +173,7 @@ static func _assign_checkpoints(list: Array[TrackPlacement], interval: int) -> v
 
 func _eligible(st: State, difficulty: float, tried: Dictionary) -> Array:
 	var tier := clampi(int(floor(difficulty)), 1, 5)
-	var pref := clampf(0.5 + difficulty * 0.4, 0.5, 3.2)
+	var pref := preferred_difficulty(difficulty)
 	var soft := ENDLESS_YAW_SOFT if st.endless else YAW_SOFT_LIMIT
 	var defs: Array = []
 	var weights := PackedFloat32Array()
@@ -232,7 +244,8 @@ func _try_place(st: State, d: TrackModuleDef, variant: int, difficulty: float, i
 	if absf(st.yaw + d.exit_yaw) > hard:
 		return false
 	var style := "trough" if is_finish else str(st.env.get("style", "trough"))
-	var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, style)
+	var runup := prev.def.length_3d if prev != null else 0.0
+	var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, style, skill_for(difficulty), runup)
 	if not chk.ok:
 		return false
 	var pts := st.xf * d.ring_pos
@@ -268,6 +281,7 @@ func _commit(st: State, d: TrackModuleDef, variant: int, chk: Dictionary, plain 
 	p.v_hi_in = st.v_hi
 	p.v_lo_out = chk.v_lo
 	p.v_hi_out = chk.v_hi
+	p.limits = chk.get("limits", [])
 	p.start_distance = st.distance
 	st.grid.insert(p.index, p.centerline, OverlapGrid.sample_radii(d))
 	st.placements.append(p)
@@ -306,8 +320,8 @@ func _backtrack(st: State) -> void:
 class EndlessStream:
 	var gen: TrackGenerator
 	var st: State
-	var start_difficulty := 1.0
-	var ramp_per_module := 0.04
+	var start_difficulty := 1.5
+	var ramp_per_module := 0.06
 	var max_difficulty := 7.0
 	var checkpoint_interval := 4
 	var _since_checkpoint := 0
@@ -348,7 +362,7 @@ class EndlessStream:
 		st.grid.remove(p.index, p.centerline)
 
 
-func create_endless(p_seed: int, start_difficulty := 1.0) -> EndlessStream:
+func create_endless(p_seed: int, start_difficulty := 1.5) -> EndlessStream:
 	var cfg := GeneratorConfig.make(p_seed, start_difficulty, 1, GeneratorConfig.Mode.ENDLESS)
 	var es := EndlessStream.new()
 	es.gen = self
@@ -361,6 +375,10 @@ func create_endless(p_seed: int, start_difficulty := 1.0) -> EndlessStream:
 
 ## Assembles an explicit module sequence without random choices. Speeds are
 ## still estimated; validation failures are recorded in stats.invalid.
+## Skill assumed by assemble() (tests set it to exercise speed limits).
+var assemble_skill := 0.0
+
+
 ## `envs` optionally gives the environment id per module (default "classic").
 func assemble(ids: PackedStringArray, variants := PackedInt32Array(), envs := PackedStringArray()) -> LevelDefinition:
 	var cfg := GeneratorConfig.make(0, 1.0, ids.size())
@@ -375,7 +393,8 @@ func assemble(ids: PackedStringArray, variants := PackedInt32Array(), envs := Pa
 		var same_next := i + 1 < envs.size() and envs[i + 1] == env_id
 		st.env_left = 2 if same_next else 1
 		var plain := d.id == "start" or d.id == "finish"
-		var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, "trough" if plain else str(st.env.get("style", "trough")))
+		var runup := st.last().def.length_3d if st.last() != null else 0.0
+		var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, "trough" if plain else str(st.env.get("style", "trough")), assemble_skill, runup)
 		if not chk.ok:
 			invalid.append("%s: %s" % [d.id, chk.reason])
 			chk = {"v_lo": maxf(st.v_lo, 1.0), "v_hi": st.v_hi}

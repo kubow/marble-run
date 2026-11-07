@@ -170,7 +170,7 @@ func _physics_process(_delta: float) -> void:
 	marble.steer_axis = Autopilot.right_of(tr.tangent)
 	marble.forward_axis = tr.tangent
 	marble.steer = autopilot.steer(tr, marble.linear_velocity) if autopilot else steer_input.value()
-	marble.throttle = 0.0 if autopilot else steer_input.throttle()
+	marble.throttle = autopilot.throttle(tr, marble.speed()) if autopilot else steer_input.throttle()
 
 	# Checkpoints
 	var cur := tr.current_placement()
@@ -203,6 +203,14 @@ func _process(_delta: float) -> void:
 		hud.set_progress(-1.0, "%d m  ·  %.1f m/s" % [int(session.tracker.max_distance), marble.speed()])
 	else:
 		hud.set_progress(session.progress(), "%d%%  ·  %.1f m/s" % [int(session.progress() * 100.0), marble.speed()])
+	# Coach the player before sections that demand a speed change.
+	match Autopilot.speed_advice(session.tracker, marble.speed(), 3.0, 25.0) if state == State.PLAYING else 0:
+		-1:
+			hud.set_prompt("BRAKE!", Color("ff4d6d"))
+		1:
+			hud.set_prompt("BOOST!", Color("2ec27e"))
+		_:
+			hud.set_prompt("", Color.WHITE)
 	if debug.visible:
 		hud.set_debug(debug.text(Engine.get_frames_per_second()))
 
