@@ -40,10 +40,16 @@ func test_different_seeds_vary() -> void:
 	var levels := _all_levels()
 	var seqs := {}
 	var used := {}
+	var envs := {}
 	for l in levels:
 		seqs[",".join(l.module_ids())] = true
 		for id in l.module_ids():
 			used[id] = true
+		for p in l.placements:
+			envs[p.env] = envs.get(p.env, 0) + 1
+	note("modules per environment: %s" % str(envs))
+	for e in gen.catalog.environments:
+		check(envs.has(e.id), "environment %s used somewhere" % e.id)
 	var unique := seqs.size()
 	note("%d unique sequences out of %d; %d module types used" % [unique, levels.size(), used.size()])
 	check(unique >= int(levels.size() * 0.95), "at least 95% unique sequences")
@@ -154,7 +160,7 @@ func test_validator_accepts_every_module() -> void:
 	var v := ReachabilityValidator.new()
 	for l in _all_levels().slice(0, 200):
 		for p in l.placements:
-			var r := v.check_module(p.def, p.v_lo_in, p.v_hi_in, p.variant)
+			var r := v.check_module(p.def, p.v_lo_in, p.v_hi_in, p.variant, p.style)
 			if not check(r.ok, "%s in %s: %s" % [p.def.id, l.config.to_code(), r.reason]):
 				return
 
@@ -188,4 +194,6 @@ func test_golden_levels() -> void:
 const GOLDEN := {
 	1: {1: "1DEE5B156B1FD4BF", 2: "4703201E86C2DC5E", 3: "971C00233C29D2D5",
 		4: "BCBF1D54A74ED1E1", 5: "6B504C161EBD7EC6", 10: "6389BCB380BC8603"},
+	2: {1: "916CAFE2A31FBEFD", 2: "21F6E2967D15A979", 3: "7CEDC5F2D7CD441A",
+		4: "08C7167BE04E41A8", 5: "5B61FBB0CBCACAA1", 10: "3F173835E9A487D6"},
 }

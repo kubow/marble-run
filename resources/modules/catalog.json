@@ -7,8 +7,23 @@
 		"lip": 0.1,
 		"base_depth": 0.3,
 		"ring_spacing": 0.8,
-		"ball_radius": 0.28
+		"ball_radius": 0.28,
+		"tube_radius": 1.1,
+		"wire_radius": 0.035,
+		"wire_side_dx": 0.245,
+		"wire_side_y": 0.06,
+		"narrow_half_width": 0.32
 	},
+	"environment_run": [3, 6],
+	"environments": [
+		{ "id": "classic", "style": "trough", "tier": 1, "weight": 5, "exclude_types": ["jump"], "color": "#ffffff" },
+		{ "id": "tube", "style": "tube", "tier": 1, "weight": 2, "color": "#bde0fe",
+			"types": ["straight", "gentle_curve", "sharp_curve", "s_curve", "downhill_ramp", "wavy"] },
+		{ "id": "wires", "style": "wires", "tier": 2, "weight": 2, "color": "#c0c8d8",
+			"types": ["straight", "gentle_curve", "sharp_curve", "s_curve", "downhill_ramp", "uphill_ramp"] },
+		{ "id": "ramps", "style": "trough", "tier": 3, "weight": 2, "color": "#ffffff",
+			"types": ["straight", "downhill_ramp", "uphill_ramp", "jump"], "boost": { "jump": 5.0, "downhill_ramp": 2.0 } }
+	],
 	"modules": [
 		{ "id": "start", "type": "start", "length": 8, "tier": 0, "weight": 0, "difficulty": 0, "color": "#8d99ff" },
 		{ "id": "finish", "type": "finish", "length": 12, "tier": 0, "weight": 0, "difficulty": 0, "color": "#ffd23f" },
@@ -34,6 +49,11 @@
 		{ "id": "funnel", "type": "funnel", "length": 16, "width_scale": 2.0, "wall_scale": 2.2, "dish": 0.5, "window": "bell", "tier": 3, "weight": 3, "difficulty": 2, "color": "#ffb703" },
 
 		{ "id": "bridge", "type": "narrow_bridge", "length": 12, "width_scale": 0.42, "wall_scale": 0.0, "tier": 3, "weight": 4, "difficulty": 3, "color": "#ef476f" },
+
+		{ "id": "jump", "type": "jump", "length": 22, "kick_start_t": 0.15, "takeoff_t": 0.4, "land_t": 0.47, "kick_height": 0.8, "land_drop": -3.0,
+			"width_scale": 1.25, "wall_scale": 1.8, "window": "landing", "min_entry_speed": 3.5, "tier": 3, "weight": 4, "difficulty": 2.5, "color": "#ff7b00" },
+		{ "id": "jump_big", "type": "jump", "length": 26, "kick_start_t": 0.12, "takeoff_t": 0.38, "land_t": 0.5, "kick_height": 1.0, "land_drop": -4.5,
+			"width_scale": 1.3, "wall_scale": 2.0, "window": "landing", "min_entry_speed": 4.5, "tier": 4, "weight": 3, "difficulty": 3, "color": "#e85d04" },
 
 		{ "id": "obstacles_static", "type": "obstacle", "length": 14, "tier": 3, "weight": 4, "difficulty": 2.5, "color": "#b8c0cc",
 			"obstacle_layouts": [

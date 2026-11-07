@@ -141,18 +141,19 @@ static func make_obstacle(def: TrackModuleDef, o: Dictionary, placement_xf: Tran
 static func make_arch(xf: Transform3D, half_w: float, c: Color, checkered := false) -> Node3D:
 	var n := Node3D.new()
 	n.transform = xf
-	var post := cylinder(0.08, 2.4)
+	# Tall enough to clear the tube environment (2 x tube radius).
+	var post := cylinder(0.08, 3.0)
 	for side in [-1.0, 1.0]:
-		n.add_child(mesh_instance(post, mat(Color.WHITE), Transform3D(Basis(), Vector3(side * (half_w + 0.3), 1.0, 0))))
+		n.add_child(mesh_instance(post, mat(Color.WHITE), Transform3D(Basis(), Vector3(side * (half_w + 0.3), 1.3, 0))))
 	if checkered:
 		var count := 8
 		var w := (half_w + 0.3) * 2.0 / count
 		for i in count:
 			var cc := Color.BLACK if i % 2 == 0 else Color.WHITE
 			n.add_child(mesh_instance(box(Vector3(w, 0.35, 0.1)), mat(cc),
-				Transform3D(Basis(), Vector3(-(half_w + 0.3) + w * (i + 0.5), 2.2, 0))))
+				Transform3D(Basis(), Vector3(-(half_w + 0.3) + w * (i + 0.5), 2.7, 0))))
 	else:
-		var bar := mesh_instance(box(Vector3((half_w + 0.3) * 2.0, 0.18, 0.12)), mat(c), Transform3D(Basis(), Vector3(0, 2.2, 0)))
+		var bar := mesh_instance(box(Vector3((half_w + 0.3) * 2.0, 0.18, 0.12)), mat(c), Transform3D(Basis(), Vector3(0, 2.7, 0)))
 		bar.name = "Bar"
 		n.add_child(bar)
 	return n

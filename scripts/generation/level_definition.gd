@@ -30,7 +30,7 @@ func logical_text() -> String:
 	parts.append("v%d|%s|%s" % [generator_version, fingerprint, config.to_code()])
 	for p in placements:
 		var o := p.transform.origin
-		parts.append("%s:%d:%.3f,%.3f,%.3f:%.4f:%s" % [p.def.id, p.variant, o.x, o.y, o.z, p.yaw_in, "C" if p.checkpoint else ""])
+		parts.append("%s:%d:%s:%.3f,%.3f,%.3f:%.4f:%s" % [p.def.id, p.variant, p.env, o.x, o.y, o.z, p.yaw_in, "C" if p.checkpoint else ""])
 	return "\n".join(parts)
 
 

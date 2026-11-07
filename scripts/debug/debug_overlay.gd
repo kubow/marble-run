@@ -98,8 +98,9 @@ func text(fps: int) -> String:
 		lines.append("endless: last chunk %.2f ms, active %d..%d, forced %d" % [session.gen_usec / 1000.0, session.first_index, session.last_index, session.stream.st.forced])
 	if p:
 		lines.append("module #%d %s (%s) t=%.2f var=%d diff=%.1f" % [p.index, p.def.id, p.def.type, t.local_t, p.variant, p.def.difficulty])
+		lines.append("environment %s / style %s%s%s" % [p.env, p.style, "  blend-in" if p.blend_in and p.style != "trough" else "", "  blend-out" if p.blend_out and p.style != "trough" else ""])
 		lines.append("est. entry speed %.1f..%.1f m/s" % [p.v_lo_in, p.v_hi_in])
 	if marble:
-		lines.append("speed %.2f m/s  steer %.2f  offset %.2f" % [marble.speed(), marble.steer, Vector2(t.offset.x, t.offset.z).length()])
+		lines.append("speed %.2f m/s  steer %.2f  throttle %.2f  offset %.2f" % [marble.speed(), marble.steer, marble.throttle, Vector2(t.offset.x, t.offset.z).length()])
 	lines.append("collision tris %d  fps %d" % [session.view.face_count, fps])
 	return "\n".join(lines)

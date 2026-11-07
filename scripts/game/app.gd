@@ -85,6 +85,8 @@ func _exit_tree() -> void:
 func _register_inputs() -> void:
 	_add_keys("steer_left", [KEY_LEFT, KEY_A])
 	_add_keys("steer_right", [KEY_RIGHT, KEY_D])
+	_add_keys("accelerate", [KEY_UP, KEY_W])
+	_add_keys("brake", [KEY_DOWN, KEY_S])
 	_add_keys("pause", [KEY_ESCAPE, KEY_P])
 	_add_keys("restart", [KEY_R])
 	_add_keys("next_level", [KEY_N])

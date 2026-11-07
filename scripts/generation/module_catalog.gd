@@ -8,6 +8,9 @@ const DEFAULT_PATH := "res://resources/modules/catalog.json"
 var spec: TrackSpec
 var modules: Array[TrackModuleDef] = []
 var by_id: Dictionary = {}
+var environments: Array = []   ## Array of Dictionary, file order.
+var env_by_id: Dictionary = {}
+var env_run := Vector2i(3, 6)
 var source_text := ""
 var raw: Dictionary = {}
 
@@ -45,7 +48,27 @@ static func load_from_text(text: String) -> ModuleCatalog:
 			continue
 		c.modules.append(m)
 		c.by_id[m.id] = m
+	var envs: Array = data.get("environments", [{"id": "classic", "style": "trough", "tier": 1, "weight": 1}])
+	for e in envs:
+		c.environments.append(e)
+		c.env_by_id[str(e.id)] = e
+	var run: Array = data.get("environment_run", [3, 6])
+	c.env_run = Vector2i(int(run[0]), int(run[1]))
 	return c
+
+
+## True if the module type may appear in the environment.
+static func env_allows(env: Dictionary, def: TrackModuleDef) -> bool:
+	if env.has("types") and not (env.types as Array).has(def.type):
+		return false
+	if env.has("exclude_types") and (env.exclude_types as Array).has(def.type):
+		return false
+	return true
+
+
+static func env_boost(env: Dictionary, def: TrackModuleDef) -> float:
+	var b: Dictionary = env.get("boost", {})
+	return float(b.get(def.type, 1.0))
 
 
 func get_def(id: String) -> TrackModuleDef:

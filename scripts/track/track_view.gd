@@ -58,15 +58,14 @@ func _take_mesh_instance() -> MeshInstance3D:
 
 
 func add_placement(p: TrackPlacement) -> void:
-	var prev_ring := PackedVector3Array()
+	var prev_strips: Array = []
 	if _entries.has(p.index - 1):
-		var prings: Array = _entries[p.index - 1].rings
-		prev_ring = prings[prings.size() - 1]
-	var rings := TrackMeshBuilder.world_rings(p, prev_ring)
+		prev_strips = _entries[p.index - 1].strips
+	var strips := TrackMeshBuilder.world_strips(p, prev_strips)
 	var root := Node3D.new()
 	root.name = "Module_%d_%s" % [p.index, p.def.id]
 	var mi := _take_mesh_instance()
-	mi.mesh = TrackMeshBuilder.get_mesh(p.def)
+	mi.mesh = TrackMeshBuilder.get_mesh(p.def, p.style, p.blend_in, p.blend_out)
 	mi.transform = p.transform
 	root.add_child(mi)
 	for o in p.obstacle_layout():
@@ -88,8 +87,8 @@ func add_placement(p: TrackPlacement) -> void:
 			Transform3D(Basis(), top + Vector3(0, -20.0, 0))))
 	add_child(root)
 	_entries[p.index] = {
-		"node": root, "mesh": mi, "rings": rings,
-		"faces": TrackMeshBuilder.faces_from_rings(rings), "placement": p, "arch": arch,
+		"node": root, "mesh": mi, "strips": strips,
+		"faces": TrackMeshBuilder.faces_from_strips(strips), "placement": p, "arch": arch,
 	}
 	_order.append(p.index)
 
@@ -149,8 +148,8 @@ func faces_of(index: int) -> PackedVector3Array:
 	return _entries[index].faces if _entries.has(index) else PackedVector3Array()
 
 
-func rings_of(index: int) -> Array:
-	return _entries[index].rings if _entries.has(index) else []
+func strips_of(index: int) -> Array:
+	return _entries[index].strips if _entries.has(index) else []
 
 
 func all_faces() -> PackedVector3Array:

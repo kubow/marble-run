@@ -141,7 +141,7 @@ func _start_from_request() -> void:
 	if saved_v != TrackGenerator.VERSION:
 		hud.toast("Saved with generator v%d - layout may differ in v%d" % [saved_v, TrackGenerator.VERSION], 4.0)
 	else:
-		hud.toast("Drag or ← → to steer", 2.5)
+		hud.toast("Drag ↔ to steer, ↕ to speed up / brake", 3.0)
 
 
 func _spawn(index: int, snap_camera: bool) -> void:
@@ -168,7 +168,9 @@ func _physics_process(_delta: float) -> void:
 	tr.update(pos)
 	session.update_stream(checkpoint_index)
 	marble.steer_axis = Autopilot.right_of(tr.tangent)
+	marble.forward_axis = tr.tangent
 	marble.steer = autopilot.steer(tr, marble.linear_velocity) if autopilot else steer_input.value()
+	marble.throttle = 0.0 if autopilot else steer_input.throttle()
 
 	# Checkpoints
 	var cur := tr.current_placement()
@@ -198,9 +200,9 @@ func _process(_delta: float) -> void:
 	if session == null:
 		return
 	if session.endless:
-		hud.set_progress(-1.0, "%d m" % int(session.tracker.max_distance))
+		hud.set_progress(-1.0, "%d m  ·  %.1f m/s" % [int(session.tracker.max_distance), marble.speed()])
 	else:
-		hud.set_progress(session.progress(), "%d%%" % int(session.progress() * 100.0))
+		hud.set_progress(session.progress(), "%d%%  ·  %.1f m/s" % [int(session.progress() * 100.0), marble.speed()])
 	if debug.visible:
 		hud.set_debug(debug.text(Engine.get_frames_per_second()))
 

@@ -32,16 +32,22 @@ var narrow_max_speed := 9.0 ## Speed cap on narrow sections (m/s).
 var steer_accel := 4.0      ## Lateral acceleration the player can produce (m/s^2).
 var min_slack := 0.25       ## Required free lateral room for the ball centre (m).
 var obstacle_hit_keep := 0.5 ## Pessimistic speed fraction kept after an obstacle module.
+var tube_grip := 2.0        ## Lateral g a closed tube can provide.
+var wire_safety := 0.6      ## Fraction of the geometric wire-cradle grip trusted.
+var jump_margin := 0.4      ## Marble must land this far past the start of the landing (m).
+var jump_keep := 0.85       ## Pessimistic extra speed fraction kept after a landing.
 
 
 func describe() -> String:
-	return "damp=%s lo=%s hi=%s min=%s grip=%s crest=%s down=%s up=%s vmax=%s narrow=%s steer=%s slack=%s hit=%s" % [
+	return "damp=%s lo=%s hi=%s min=%s grip=%s crest=%s down=%s up=%s vmax=%s narrow=%s steer=%s slack=%s hit=%s tube=%s wire=%s jmargin=%s jkeep=%s" % [
 		damp_eff, lo_damp_mul, hi_damp_mul, min_speed, wall_grip, crest_safety,
-		max_down_slope, max_up_slope, max_speed, narrow_max_speed, steer_accel, min_slack, obstacle_hit_keep]
+		max_down_slope, max_up_slope, max_speed, narrow_max_speed, steer_accel, min_slack, obstacle_hit_keep,
+		tube_grip, wire_safety, jump_margin, jump_keep]
 
 
-## Returns {ok, reason, v_lo, v_hi, v_min}.
-func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = -1) -> Dictionary:
+## Returns {ok, reason, v_lo, v_hi, v_min}. `style` is the environment
+## geometry ("trough", "tube", "wires") the module is built with.
+func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = -1, style := "trough") -> Dictionary:
 	var res := {"ok": true, "reason": "", "v_lo": v_lo, "v_hi": v_hi, "v_min": v_lo}
 	if def.min_entry_speed > 0.0 and v_lo < def.min_entry_speed:
 		return _fail(res, "entry speed %.2f < required %.2f" % [v_lo, def.min_entry_speed])
@@ -52,7 +58,9 @@ func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = 
 	var hi := v_hi
 	var vmin := v_lo
 	var n := def.ring_count()
-	for k in n:
+	var k := 0
+	while k < n:
+		var sk := def.ring_s[k]
 		var slope := def.ring_slope[k]
 		if slope < -max_down_slope:
 			return _fail(res, "slope %.2f too steep" % slope)
@@ -70,17 +78,25 @@ func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = 
 			vmin = minf(vmin, lo)
 			if lo < min_speed:
 				return _fail(res, "stall: speed %.2f" % lo)
-		# Curves: lateral acceleration capacity from banking and walls.
+		var styled := style != "trough" and def.style_blend(sk, TrackSpec.blend_fraction(style)) > 0.5
+		# Curves: lateral acceleration capacity from banking and walls/wires/tube.
 		var kap := absf(def.ring_kappa[k])
 		if kap > 1e-4:
-			var bank := absf(def.bank_at(def.ring_s[k]))
-			var wall_ratio := clampf(def.ring_wall_h[k] / std_wall, 0.0, 1.5) if std_wall > 0.0 else 0.0
-			var cap := G * (sin(bank) + wall_grip * wall_ratio)
+			var bank := absf(def.bank_at(sk))
+			var grip := 0.0
+			if styled and style == "tube":
+				grip = tube_grip
+			elif styled and style == "wires":
+				grip = wire_grip(def.spec)
+			else:
+				var wall_ratio := clampf(def.ring_wall_h[k] / std_wall, 0.0, 1.5) if std_wall > 0.0 else 0.0
+				grip = wall_grip * wall_ratio
+			var cap := G * (sin(bank) + grip)
 			if hi * hi * kap > cap:
 				return _fail(res, "too fast for curve (%.2f m/s, r=%.1f m)" % [hi, 1.0 / kap])
-		# Crests: do not leave the surface.
+		# Crests: do not leave the surface (a closed tube holds the marble).
 		var vc := def.ring_vcurv[k]
-		if vc < 0.0:
+		if vc < 0.0 and not (styled and style == "tube"):
 			var cos_t := 1.0 / sqrt(1.0 + slope * slope)
 			if hi * hi * -vc > crest_safety * G * cos_t:
 				return _fail(res, "would jump on crest (%.2f m/s)" % hi)
@@ -88,6 +104,30 @@ func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = 
 			return _fail(res, "too fast (%.2f m/s)" % hi)
 		if def.ring_half_w[k] < 0.8 * def.spec.half_width and hi > narrow_max_speed:
 			return _fail(res, "too fast for narrow section (%.2f m/s)" % hi)
+		# Jumps: fly both speed bounds over the gap and continue after landing.
+		if def.is_jump() and is_equal_approx(sk, def.takeoff_s()):
+			var jl := jump_flight(def, lo)
+			var jh := jump_flight(def, hi)
+			if not jl.ok:
+				return _fail(res, "jump at %.1f m/s: %s" % [lo, jl.reason])
+			if not jh.ok:
+				return _fail(res, "jump at %.1f m/s: %s" % [hi, jh.reason])
+			# Restart integration at the first ring after both landings; add the
+			# height gained between each landing point and that ring.
+			var s_after := maxf(jl.s_hit, jh.s_hit)
+			var r := k + 1
+			while r < n and def.ring_s[r] < s_after:
+				r += 1
+			if r >= n:
+				return _fail(res, "lands at the module end")
+			var y_r := def.ring_pos[r].y
+			lo = sqrt(maxf(jl.v * jl.v + 2.0 * G * ROLL * (jl.y_hit - y_r), 0.0)) * jump_keep
+			hi = sqrt(maxf(jh.v * jh.v + 2.0 * G * ROLL * (jh.y_hit - y_r), 0.0))
+			if lo < min_speed:
+				return _fail(res, "stall after landing")
+			k = r + 1
+			continue
+		k += 1
 	if variant >= 0 and variant < def.obstacle_layouts.size():
 		var ob := validate_layout(def, def.obstacle_layouts[variant], hi)
 		if not ob.ok:
@@ -98,6 +138,46 @@ func check_module(def: TrackModuleDef, v_lo: float, v_hi: float, variant: int = 
 	res.v_hi = maxf(hi, lo)
 	res.v_min = vmin
 	return res
+
+
+## Lateral grip (in g) of the 3-wire cradle: the side wire supports the marble
+## along the line from the wire centre to the marble centre.
+func wire_grip(spec: TrackSpec) -> float:
+	var dx := spec.wire_side_dx
+	var dy := spec.ball_radius - spec.wire_side_y
+	return wire_safety * dx / maxf(dy, 0.01)
+
+
+## Ballistic flight of the marble centre from the kicker lip at speed v.
+## Returns {ok, reason, s_hit, y_hit, v} where v is the speed kept along the
+## landing surface (the normal component is lost on impact).
+func jump_flight(def: TrackModuleDef, v: float) -> Dictionary:
+	var st := def.takeoff_s()
+	var sl := def.land_s()
+	var th := atan(def.slope_at(st))
+	var vx := v * cos(th)
+	var vy := v * sin(th)
+	if vx < 0.1:
+		return {"ok": false, "reason": "no forward speed"}
+	var y0 := def.height_at(st)
+	var s := sl
+	var steps := 0
+	while s <= def.length:
+		var t := (s - st) / vx
+		var y := y0 + vy * t - 0.5 * G * t * t
+		var surf := def.height_at(s)
+		if y <= surf:
+			if s < sl + jump_margin:
+				return {"ok": false, "reason": "falls short of the landing"}
+			if s > def.length - 2.0:
+				return {"ok": false, "reason": "overshoots the landing"}
+			var vyh := vy - G * t
+			var phi := atan(def.slope_at(s))
+			var along := vx * cos(phi) + vyh * sin(phi)
+			return {"ok": true, "reason": "", "s_hit": s, "y_hit": surf, "v": maxf(along, 0.0)}
+		s += 0.05
+		steps += 1
+	return {"ok": false, "reason": "overshoots the module"}
 
 
 func _fail(res: Dictionary, reason: String) -> Dictionary:

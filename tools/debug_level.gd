@@ -6,7 +6,7 @@ func _run():
 	var cfg := GeneratorConfig.from_code(args[0])
 	var from := int(args[1]) if args.size() > 1 else 0
 	var level := TrackGenerator.new().generate(cfg)
-	for p in level.placements: print(p.index, " ", p.def.id, " var=", p.variant, " vlo_in=", snappedf(p.v_lo_in,0.01), " vhi_in=", snappedf(p.v_hi_in,0.01), " cp=", p.checkpoint)
+	for p in level.placements: print(p.index, " ", p.def.id, "/", p.style, " var=", p.variant, " vlo_in=", snappedf(p.v_lo_in,0.01), " vhi_in=", snappedf(p.v_hi_in,0.01), " cp=", p.checkpoint)
 	var h := SimHarness.new(self, level)
 	h.autopilot = Autopilot.new()
 	var f := func(sim):

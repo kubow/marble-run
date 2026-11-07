@@ -5,6 +5,11 @@ extends RefCounted
 var index := 0
 var def: TrackModuleDef
 var variant := -1                       ## Obstacle layout index or -1.
+var env := "classic"                    ## Environment id (see catalog "environments").
+var style := "trough"                   ## Geometry style: trough | tube | wires.
+var env_left_in := 0                    ## Generator state before this module (for backtracking).
+var blend_in := true                    ## Styled geometry blends from the standard profile at entry.
+var blend_out := true                   ## ... and back to it at the exit.
 var transform := Transform3D.IDENTITY   ## World transform of the entry connector.
 var exit_transform := Transform3D.IDENTITY
 var yaw_in := 0.0                       ## Net heading at entry (radians).
@@ -42,6 +47,7 @@ func to_dict() -> Dictionary:
 	return {
 		"id": def.id,
 		"variant": variant,
+		"env": env,
 		"origin": [o.x, o.y, o.z],
 		"yaw": yaw_in,
 		"checkpoint": checkpoint,

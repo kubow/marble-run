@@ -12,10 +12,15 @@ extends RigidBody3D
 @export var damping := 0.12            ## Linear damping (1/s).
 @export var spin_damping := 0.05       ## Angular damping (1/s).
 @export var max_speed := 22.0          ## Hard safety cap (m/s).
+@export var boost_force := 3.5         ## N at full throttle along the track.
+@export var brake_force := 6.0         ## N at full brake, against the motion.
+@export var boost_max_speed := 15.0    ## Boosting stops adding force above this (m/s).
 
 var steer := 0.0                       ## -1 (left) .. 1 (right), set by the game.
 var steer_axis := Vector3.RIGHT        ## World direction of "right".
 var steer_enabled := true
+var throttle := 0.0                    ## -1 (brake) .. 1 (accelerate), set by the game.
+var forward_axis := Vector3.FORWARD    ## World direction of the track ahead.
 
 var _reset_pending := false
 var _reset_xf := Transform3D.IDENTITY
@@ -75,7 +80,13 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		var axis := Vector3(steer_axis.x, 0.0, steer_axis.z).normalized()
 		state.apply_central_force(axis * clampf(steer, -1.0, 1.0) * max_steer_force * mass)
 	var v := state.linear_velocity
-	if v.length() > max_speed:
+	var sp := v.length()
+	if steer_enabled and throttle > 0.0 and sp < boost_max_speed:
+		state.apply_central_force(forward_axis.normalized() * minf(throttle, 1.0) * boost_force * mass)
+	elif steer_enabled and throttle < 0.0 and sp > 0.05:
+		# Brake against the motion; fades out near standstill so it never reverses.
+		state.apply_central_force(-v / sp * minf(-throttle, 1.0) * brake_force * mass * minf(sp, 1.0))
+	if sp > max_speed:
 		state.linear_velocity = v.normalized() * max_speed
 
 

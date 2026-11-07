@@ -31,6 +31,12 @@ var weight := 1.0            ## Base selection weight.
 var min_entry_speed := 0.0   ## Required entry speed (m/s), 0 = none.
 var color := Color.WHITE
 var obstacle_layouts: Array = []   ## Array of Array[Dictionary]
+# Jump modules: kicker ramp, air gap (no geometry), sloped landing.
+var kick_start_t := 0.0      ## Kicker starts rising here (fraction of length).
+var takeoff_t := -1.0        ## Lip of the kicker; < 0 means "not a jump".
+var land_t := -1.0           ## Start of the landing surface.
+var kick_height := 0.0       ## Kicker rise above the base grade at the lip (m).
+var land_drop := 0.0         ## Extra drop of the landing section (m, negative).
 
 var spec: TrackSpec
 
@@ -77,6 +83,11 @@ static func from_dict(d: Dictionary, p_spec: TrackSpec) -> TrackModuleDef:
 	m.min_entry_speed = float(d.get("min_entry_speed", 0.0))
 	m.color = Color.html(str(d.get("color", "#ffffff")))
 	m.obstacle_layouts = d.get("obstacle_layouts", [])
+	m.kick_start_t = float(d.get("kick_start_t", 0.0))
+	m.takeoff_t = float(d.get("takeoff_t", -1.0))
+	m.land_t = float(d.get("land_t", -1.0))
+	m.kick_height = float(d.get("kick_height", 0.0))
+	m.land_drop = float(d.get("land_drop", 0.0))
 	m.build_samples()
 	return m
 
@@ -116,7 +127,79 @@ func _peak_kappa() -> float:
 	return 0.0
 
 
+func is_jump() -> bool:
+	return takeoff_t > 0.0 and land_t > takeoff_t
+
+
+func takeoff_s() -> float:
+	return takeoff_t * length
+
+
+func land_s() -> float:
+	return land_t * length
+
+
+## True if s lies strictly inside the air gap of a jump.
+func in_gap(s: float) -> bool:
+	return is_jump() and s > takeoff_s() + 1e-4 and s < land_s() - 1e-4
+
+
+## True if the ring segment k -> k+1 is inside the air gap (no geometry).
+func gap_segment(k: int) -> bool:
+	if not is_jump():
+		return false
+	return ring_s[k] >= takeoff_s() - 1e-4 and ring_s[k + 1] <= land_s() + 1e-4
+
+
+func _jump_height(s: float) -> float:
+	var s0 := kick_start_t * length
+	var st := takeoff_s()
+	var sl := land_s()
+	if s <= st:
+		var k := 0.0
+		if s > s0:
+			var u := (s - s0) / (st - s0)
+			k = kick_height * u * u
+		return spec.grade * s + k
+	if s >= sl:
+		var u := (s - sl) / (length - sl)
+		return spec.grade * s + land_drop * (1.0 - (1.0 - u) * (1.0 - u))
+	# Inside the gap: straight line between lip and landing (tracking only).
+	var a := _jump_height(st)
+	var b := _jump_height(sl)
+	return lerpf(a, b, (s - st) / (sl - st))
+
+
+func _jump_slope(s: float) -> float:
+	var s0 := kick_start_t * length
+	var st := takeoff_s()
+	var sl := land_s()
+	if s <= st:
+		if s > s0:
+			return spec.grade + 2.0 * kick_height * (s - s0) / ((st - s0) * (st - s0))
+		return spec.grade
+	if s >= sl:
+		var ll := length - sl
+		var u := (s - sl) / ll
+		return spec.grade + land_drop * 2.0 * (1.0 - u) / ll
+	return (_jump_height(sl) - _jump_height(st)) / (sl - st)
+
+
+func _jump_dd(s: float) -> float:
+	var s0 := kick_start_t * length
+	var st := takeoff_s()
+	var sl := land_s()
+	if s <= st:
+		return 2.0 * kick_height / ((st - s0) * (st - s0)) if s > s0 else 0.0
+	if s >= sl:
+		var ll := length - sl
+		return -2.0 * land_drop / (ll * ll)
+	return 0.0
+
+
 func height_at(s: float) -> float:
+	if is_jump():
+		return _jump_height(s)
 	var t := s / length
 	var s5 := t * t * t * (t * (6.0 * t - 15.0) + 10.0)
 	var w := sin(PI * wave_count * t)
@@ -124,6 +207,8 @@ func height_at(s: float) -> float:
 
 
 func slope_at(s: float) -> float:
+	if is_jump():
+		return _jump_slope(s)
 	var t := s / length
 	var ds5 := 30.0 * t * t * (t - 1.0) * (t - 1.0)
 	var k := PI * wave_count / length
@@ -131,6 +216,8 @@ func slope_at(s: float) -> float:
 
 
 func height_dd_at(s: float) -> float:
+	if is_jump():
+		return _jump_dd(s)
 	var t := s / length
 	var dds5 := 120.0 * t * t * t - 180.0 * t * t + 60.0 * t
 	var k := PI * wave_count / length
@@ -142,6 +229,9 @@ func window_at(s: float) -> float:
 	if window == "bell":
 		var w := sin(PI * t)
 		return w * w
+	if window == "landing":
+		# Wider, taller walls on the landing to catch the marble.
+		return _smooth(land_t, land_t + 0.08, t) * (1.0 - _smooth(0.85, 1.0, t))
 	return _smooth(0.0, 0.2, t) * (1.0 - _smooth(0.8, 1.0, t))
 
 
@@ -157,6 +247,12 @@ func profile_at(s: float) -> Vector3:
 		spec.half_width * lerpf(1.0, width_scale, f),
 		spec.wall_height * lerpf(1.0, wall_scale, f),
 		dish * f)
+
+
+## Style blend factor: 0 at both ends, 1 in the styled middle of the module.
+func style_blend(s: float, b := TrackSpec.STYLE_BLEND) -> float:
+	var t := clampf(s / length, 0.0, 1.0)
+	return _smooth(0.0, b, t) * (1.0 - _smooth(1.0 - b, 1.0, t))
 
 
 func bank_at(s: float) -> float:
@@ -200,6 +296,23 @@ func build_samples() -> void:
 	if width_scale != 1.0 or wall_scale != 1.0 or dish != 0.0:
 		segs = maxi(segs, 16)
 	segs = maxi(segs, 6)
+	# Sample positions: uniform plus exact style-blend and jump boundaries.
+	var s_list: Array = []
+	for i in segs + 1:
+		s_list.append(length * float(i) / segs)
+	for b in [TrackSpec.STYLE_BLEND, TrackSpec.WIRE_BLEND]:
+		for f in [b / 3.0, b * 2.0 / 3.0, b, b * 4.0 / 3.0, 1.0 - b * 4.0 / 3.0, 1.0 - b, 1.0 - b * 2.0 / 3.0, 1.0 - b / 3.0]:
+			s_list.append(length * f)
+	if is_jump():
+		s_list.append(takeoff_s())
+		s_list.append(land_s())
+	s_list.sort()
+	var uniq: Array = []
+	for v in s_list:
+		if uniq.is_empty() or v - uniq[-1] > 0.05:
+			uniq.append(v)
+		elif v == length or (is_jump() and (is_equal_approx(v, takeoff_s()) or is_equal_approx(v, land_s()))):
+			uniq[-1] = v
 	ring_s.clear(); ring_pos.clear(); ring_right.clear(); ring_up.clear(); ring_tangent.clear()
 	ring_half_w.clear(); ring_wall_h.clear(); ring_dish.clear(); ring_dist.clear()
 	ring_kappa.clear(); ring_slope.clear(); ring_vcurv.clear()
@@ -207,8 +320,8 @@ func build_samples() -> void:
 	var prev := Vector3.ZERO
 	var dist := 0.0
 	max_half_width = 0.0
-	for i in segs + 1:
-		var s := length * float(i) / segs
+	for i in uniq.size():
+		var s: float = uniq[i]
 		if i > 0:
 			xz = _integrate_xz(ring_s[i - 1], xz, s, 8)
 		var p := Vector3(xz.x, height_at(s), xz.y)

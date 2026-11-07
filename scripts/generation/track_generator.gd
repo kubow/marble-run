@@ -11,9 +11,10 @@ extends RefCounted
 ## catalogue changes generated levels. Bump VERSION and add the new value from
 ## config_fingerprint() to FINGERPRINTS (tests/test_generation.gd enforces it).
 
-const VERSION := 1
+const VERSION := 2
 const FINGERPRINTS := {
 	1: "D6902695074F881F",
+	2: "2BA1F9EF76FEB4C0",
 }
 
 const FALLBACK_IDS := ["straight", "gentle_left", "gentle_right", "downhill"]
@@ -37,8 +38,8 @@ func _init(p_catalog: ModuleCatalog = null) -> void:
 
 ## Fingerprint of everything that influences generated levels.
 func config_fingerprint() -> String:
-	var text := "gen:%d|fallback:%s|forced:%s|yaw:%.4f,%.4f,%.4f,%.4f|spawn:%.2f|rec:%.2f,%.2f|val:%s|cat:%s" % [
-		VERSION, ",".join(FALLBACK_IDS), ENDLESS_FORCED_ID, YAW_SOFT_LIMIT, YAW_HARD_LIMIT,
+	var text := "gen:%d|blend:%.3f,%.3f|fallback:%s|forced:%s|yaw:%.4f,%.4f,%.4f,%.4f|spawn:%.2f|rec:%.2f,%.2f|val:%s|cat:%s" % [
+		VERSION, TrackSpec.STYLE_BLEND, TrackSpec.WIRE_BLEND, ",".join(FALLBACK_IDS), ENDLESS_FORCED_ID, YAW_SOFT_LIMIT, YAW_HARD_LIMIT,
 		ENDLESS_YAW_SOFT, ENDLESS_YAW_HARD, SPAWN_SPEED, RECOVERY_AFTER, RECOVERY_MAX,
 		validator.describe(), catalog.canonical_text()]
 	return Hash64.to_hex(Hash64.fnv1a64(text))
@@ -62,6 +63,8 @@ class State:
 	var forced := 0
 	var since_checkpoint := 0
 	var endless := false
+	var env: Dictionary = {}        ## Current environment (catalog entry).
+	var env_left := 0               ## Modules left in the current environment run.
 
 	func last() -> TrackPlacement:
 		return placements[-1] if not placements.is_empty() else null
@@ -74,7 +77,32 @@ func _make_state(cfg: GeneratorConfig) -> State:
 	st.endless = cfg.mode == GeneratorConfig.Mode.ENDLESS
 	st.v_lo = SPAWN_SPEED
 	st.v_hi = SPAWN_SPEED
+	st.env = catalog.env_by_id.get("classic", catalog.environments[0])
+	st.env_left = 0
 	return st
+
+
+## Picks the next environment run (deterministic, from the state's RNG).
+func _choose_env(st: State, difficulty: float) -> void:
+	var tier := clampi(int(floor(difficulty)), 1, 5)
+	var envs: Array = []
+	var w := PackedFloat32Array()
+	for e in catalog.environments:
+		if int(e.get("tier", 1)) > tier:
+			continue
+		var ew := float(e.get("weight", 1.0))
+		if e.id == st.env.get("id", ""):
+			ew *= 0.3
+		# A new run of a styled environment must change style, so the previous
+		# module's exit blending (decided when it was placed) stays correct.
+		var cur_style := str(st.env.get("style", "trough"))
+		if cur_style != "trough" and str(e.get("style", "trough")) == cur_style:
+			continue
+		envs.append(e)
+		w.append(ew)
+	var pick := st.rng.rand_weighted(w)
+	st.env = envs[maxi(pick, 0)]
+	st.env_left = st.rng.randi_range(catalog.env_run.x, catalog.env_run.y)
 
 
 # --- Level generation --------------------------------------------------------
@@ -82,7 +110,7 @@ func _make_state(cfg: GeneratorConfig) -> State:
 func generate(cfg: GeneratorConfig) -> LevelDefinition:
 	var t0 := Time.get_ticks_usec()
 	var st := _make_state(cfg)
-	_commit(st, catalog.get_def("start"), -1, {"v_lo": SPAWN_SPEED, "v_hi": SPAWN_SPEED})
+	_commit(st, catalog.get_def("start"), -1, {"v_lo": SPAWN_SPEED, "v_hi": SPAWN_SPEED}, true)
 	var budget := cfg.attempt_budget_per_segment * cfg.segment_count
 	while st.placements.size() - 1 < cfg.segment_count and st.attempts < budget:
 		if not _extend(st, cfg.difficulty):
@@ -91,6 +119,8 @@ func generate(cfg: GeneratorConfig) -> LevelDefinition:
 	var finish := catalog.get_def("finish")
 	while true:
 		if _try_place(st, finish, -1, cfg.difficulty, true):
+			# The run may be cut short by the finish: close the styled geometry.
+			st.placements[-2].blend_out = true
 			break
 		if st.placements.size() <= 1:
 			push_error("TrackGenerator: could not place finish")
@@ -138,7 +168,9 @@ func _eligible(st: State, difficulty: float, tried: Dictionary) -> Array:
 	for d in catalog.modules:
 		if d.weight <= 0.0 or d.tier > tier or tried.has(d.id):
 			continue
-		var w := d.weight * exp(-0.5 * pow((d.difficulty - pref) / 1.2, 2.0))
+		if not ModuleCatalog.env_allows(st.env, d):
+			continue
+		var w := d.weight * exp(-0.5 * pow((d.difficulty - pref) / 1.2, 2.0)) * ModuleCatalog.env_boost(st.env, d)
 		if d.exit_yaw != 0.0:
 			var ny := st.yaw + d.exit_yaw
 			if absf(ny) > soft and absf(ny) > absf(st.yaw):
@@ -152,6 +184,8 @@ func _eligible(st: State, difficulty: float, tried: Dictionary) -> Array:
 
 func _extend(st: State, difficulty: float) -> bool:
 	var tried := {}
+	if st.env_left <= 0:
+		_choose_env(st, difficulty)
 	for i in st.cfg.max_tries_per_slot:
 		var e := _eligible(st, difficulty, tried)
 		var defs: Array = e[0]
@@ -174,7 +208,7 @@ func _extend(st: State, difficulty: float) -> bool:
 	elif st.yaw < 0.0:
 		order = ["straight", "gentle_left", "downhill", "gentle_right"]
 	for id in order:
-		if tried.has(id):
+		if tried.has(id) or not ModuleCatalog.env_allows(st.env, catalog.get_def(id)):
 			continue
 		if _try_place(st, catalog.get_def(id), -1, difficulty, false):
 			st.fallbacks += 1
@@ -197,7 +231,8 @@ func _try_place(st: State, d: TrackModuleDef, variant: int, difficulty: float, i
 	var hard := ENDLESS_YAW_HARD if st.endless else YAW_HARD_LIMIT
 	if absf(st.yaw + d.exit_yaw) > hard:
 		return false
-	var chk := validator.check_module(d, st.v_lo, st.v_hi, variant)
+	var style := "trough" if is_finish else str(st.env.get("style", "trough"))
+	var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, style)
 	if not chk.ok:
 		return false
 	var pts := st.xf * d.ring_pos
@@ -206,13 +241,28 @@ func _try_place(st: State, d: TrackModuleDef, variant: int, difficulty: float, i
 		min_idx = maxi(0, st.next_index - 60)
 	if st.grid.overlaps(pts, OverlapGrid.sample_radii(d), st.next_index - 1, min_idx):
 		return false
-	_commit(st, d, variant, chk)
+	_commit(st, d, variant, chk, is_finish)
 	return true
 
 
-func _commit(st: State, d: TrackModuleDef, variant: int, chk: Dictionary) -> TrackPlacement:
+func _commit(st: State, d: TrackModuleDef, variant: int, chk: Dictionary, plain := false) -> TrackPlacement:
 	var p := TrackPlacement.new()
 	p.setup(st.next_index, d, variant, st.xf)
+	p.env_left_in = st.env_left
+	var prev := st.last()
+	if plain:
+		p.env = "classic"
+		p.style = "trough"
+	else:
+		p.env = str(st.env.get("id", "classic"))
+		p.style = str(st.env.get("style", "trough"))
+		st.env_left -= 1
+	# Styled geometry continues straight through connectors inside one run and
+	# blends to the standard profile only where the style changes.
+	p.blend_in = prev == null or prev.style != p.style
+	p.blend_out = plain or st.env_left <= 0
+	if prev != null and prev.style != p.style:
+		prev.blend_out = true
 	p.yaw_in = st.yaw
 	p.v_lo_in = st.v_lo
 	p.v_hi_in = st.v_hi
@@ -235,6 +285,13 @@ func _backtrack(st: State) -> void:
 		return
 	var p: TrackPlacement = st.placements.pop_back()
 	st.grid.remove(p.index, p.centerline)
+	st.env_left = p.env_left_in
+	if p.def.id != "start" and p.def.id != "finish":
+		st.env = catalog.env_by_id.get(p.env, st.env)
+	var prev := st.last()
+	if prev != null:
+		# Restore the predecessor's exit blending as it was before p.
+		prev.blend_out = prev.env_left_in - 1 <= 0 or prev.def.id == "start"
 	st.next_index = p.index
 	st.yaw = p.yaw_in
 	st.xf = p.transform
@@ -263,14 +320,14 @@ class EndlessStream:
 	## below any earlier section.
 	func next() -> TrackPlacement:
 		if st.placements.is_empty():
-			var s := gen._commit(st, gen.catalog.get_def("start"), -1, {"v_lo": SPAWN_SPEED, "v_hi": SPAWN_SPEED})
+			var s := gen._commit(st, gen.catalog.get_def("start"), -1, {"v_lo": SPAWN_SPEED, "v_hi": SPAWN_SPEED}, true)
 			s.checkpoint = true
 			_since_checkpoint = 1
 			return s
 		var diff := difficulty_at(st.next_index)
 		if not gen._extend(st, diff):
 			var d := gen.catalog.get_def(ENDLESS_FORCED_ID)
-			var chk := gen.validator.check_module(d, st.v_lo, st.v_hi, -1)
+			var chk := gen.validator.check_module(d, st.v_lo, st.v_hi, -1, str(st.env.get("style", "trough")))
 			if not chk.ok:
 				chk = {"v_lo": maxf(st.v_lo, SPAWN_SPEED), "v_hi": maxf(st.v_hi, SPAWN_SPEED)}
 			var fp := gen._commit(st, d, -1, chk)
@@ -304,18 +361,25 @@ func create_endless(p_seed: int, start_difficulty := 1.0) -> EndlessStream:
 
 ## Assembles an explicit module sequence without random choices. Speeds are
 ## still estimated; validation failures are recorded in stats.invalid.
-func assemble(ids: PackedStringArray, variants := PackedInt32Array()) -> LevelDefinition:
+## `envs` optionally gives the environment id per module (default "classic").
+func assemble(ids: PackedStringArray, variants := PackedInt32Array(), envs := PackedStringArray()) -> LevelDefinition:
 	var cfg := GeneratorConfig.make(0, 1.0, ids.size())
 	var st := _make_state(cfg)
 	var invalid := PackedStringArray()
 	for i in ids.size():
 		var d := catalog.get_def(ids[i])
 		var variant := variants[i] if i < variants.size() else (0 if d.has_obstacles() else -1)
-		var chk := validator.check_module(d, st.v_lo, st.v_hi, variant)
+		var env_id := envs[i] if i < envs.size() else "classic"
+		st.env = catalog.env_by_id.get(env_id, st.env)
+		# Keep the run going while the next module has the same environment.
+		var same_next := i + 1 < envs.size() and envs[i + 1] == env_id
+		st.env_left = 2 if same_next else 1
+		var plain := d.id == "start" or d.id == "finish"
+		var chk := validator.check_module(d, st.v_lo, st.v_hi, variant, "trough" if plain else str(st.env.get("style", "trough")))
 		if not chk.ok:
 			invalid.append("%s: %s" % [d.id, chk.reason])
 			chk = {"v_lo": maxf(st.v_lo, 1.0), "v_hi": st.v_hi}
-		_commit(st, d, variant, chk)
+		_commit(st, d, variant, chk, plain)
 	var level := LevelDefinition.new()
 	level.config = cfg
 	level.generator_version = VERSION

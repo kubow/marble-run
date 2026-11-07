@@ -37,11 +37,43 @@ grade is implied. Modules are assembled by multiplying connector transforms — 
 module assumes a size.
 
 Module parameters (length, turn, elevation, wave, width/wall scale, dish, bank,
-difficulty, tier, weight, min entry speed, obstacle layouts, colour) live in
-`catalog.json`. The 12 required module kinds are present (straight, gentle/sharp
+difficulty, tier, weight, min entry speed, obstacle layouts, jump geometry,
+colour) live in `catalog.json`. The 12 required module kinds are present (straight, gentle/sharp
 left/right, downhill, uphill, wavy, S-curve, funnel/bowl, narrow bridge, static
 and moving obstacle segments) plus `start`, `finish`, `straight_long`,
 `downhill_steep`.
+
+## Environments
+
+`catalog.json → environments` defines four environments: `classic` (trough),
+`tube`, `wires` and `ramps` (trough, jump modules boosted). Each has a tier, a
+weight, the module types it allows and per-type weight boosts. The generator
+keeps an environment for a run of 3–6 modules (`environment_run`), then picks the
+next one from the RNG; a new run of a styled environment must change style.
+
+A placement stores its environment and **style** (`trough`, `tube`, `wires`).
+Style is applied *inside* a module: the cross-section blends from the standard
+trough profile to the style over the first 12 % (tube) or 30 % (wires — a long,
+~18° funnel with raised walls) of the module, and back at the end. Blending
+happens only where the neighbour has a different style (`blend_in`/`blend_out`),
+so a run of tube or wire modules is continuous, and every connector between two
+different styles is the standard ring.
+
+* **tube**: the 15 collision points are blended onto a nearly closed circle
+  (radius 1.1 m, 4° gap at the top); faces point inwards. Rendered with a
+  translucent, double-sided material, opaque at the bottom.
+* **wires**: rendered as three round hexagonal wires with brackets. Collision is
+  three narrow flat strips on the wire surfaces facing the marble — round wire
+  meshes made the marble chatter between three convex prisms and lose a lot of
+  speed. The side wires leave 1.4 cm of play, so the marble rests on the bottom
+  wire; lateral grip is `0.6 × dx/dy` g of the side-wire contact geometry.
+* **jumps** (`jump`, `jump_big`): a parabolic kicker up to the lip, an air gap
+  with no geometry, and a landing whose slope is steepest at the start, with
+  wider, taller walls. Collision is split into two strips at the gap.
+
+Collision strips are keyed (`surface`, `w0`, `w1`, `w2`); at a connector each
+strip that starts at the entry reuses the previous module's last ring of the
+strip with the same key.
 
 ## Seeds
 
@@ -81,8 +113,8 @@ A candidate is accepted only if all constraints pass:
    `r_a + r_b + 0.6 m` unless the vertical separation is ≥ 4 m.
 
 Termination: attempts are bounded by the budget; the finish loop only removes
-modules. Measured over 1000 seeds: max 150 attempts, ≈ 12 ms mean / 21 ms max per
-level on desktop, 0 short levels.
+modules. Measured over 1000 seeds (generator v2): max 167 attempts, ≈ 20 ms mean / 35 ms
+max per level on desktop, 0 short levels.
 
 ## Reachability validator
 
@@ -104,9 +136,21 @@ speed (`c × 0.5`), and rejects a module when:
   no jumps are designed, so none are allowed;
 * slope is outside [−0.75, +0.25]; optimistic speed > 14 m/s, or > 9 m/s on a narrow
   section;
+* in a tube, curves may use 2 g of grip and crests are allowed (the ceiling
+  holds the marble); on wires the grip is the side-wire geometry above;
+* **jumps**: at the lip both the pessimistic and the optimistic speed are flown
+  ballistically from the lip's slope; each must land at least 0.4 m past the
+  start of the landing and at least 2 m before the module end. The speed kept
+  along the landing surface (normal component lost) plus the height gained to a
+  common restart ring continues the integration; the pessimistic speed loses a
+  further 15 %;
 * an obstacle row leaves no lane ≥ 0.25 m of free centre space (moving sweepers
   are treated as blocking their full sweep), or consecutive lanes require more
   than half the available steering acceleration at the optimistic speed.
+
+Validation assumes **no throttle input**: every level is meant to be completable
+by steering alone. Boost (3.5 N along the track, up to 15 m/s) and brake (6 N
+against the motion, never reversing) are player tools that can also cause falls.
 
 This is deliberately conservative and still **does not prove** a level is
 completable. `tests/test_physics.gd` additionally drives an autopilot through 30

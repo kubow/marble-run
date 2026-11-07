@@ -2,12 +2,16 @@
 
 An offline, procedural 3D marble run for Android and Linux, built with Godot 4.7
 and GDScript only. A marble rolls down an elevated toy-like track assembled from
-reusable modules by a deterministic, seeded generator. Steer left/right, avoid
-falling off, reach the finish.
+reusable modules by a deterministic, seeded generator. Steer, speed up or brake,
+avoid falling off, reach the finish.
 
-* 18 analytic track modules (straights, gentle/sharp curves, S-bends, ramps,
-  waves, funnel/bowl, narrow bridge, static and moving obstacles) defined in
-  `resources/modules/catalog.json` — no external models.
+* 20 analytic track modules (straights, gentle/sharp curves, S-bends, ramps,
+  waves, funnel/bowl, narrow bridge, static and moving obstacles, jumps) defined
+  in `resources/modules/catalog.json` — no external models.
+* 4 alternating environments, switching every 3–6 modules:
+  **classic** open track, **tube** (closed see-through pipe), **wires** (three
+  metal wires — no room to steer, speed control is everything) and **ramps**
+  (jumps over air gaps).
 * Deterministic generation from 64-bit seeds, with overlap, slope, curvature,
   speed and obstacle-lane validation; ~12 ms per level on desktop.
 * Numbered levels with rising difficulty, custom seeds / shareable track codes,
@@ -24,6 +28,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how generation works,
 | Action | Touch | Keyboard |
 |---|---|---|
 | Steer | drag left/right anywhere | ← → or A / D |
+| Speed up / brake | drag up / down (same drag) | ↑ ↓ or W / S |
 | Pause | `II` button | Esc / P |
 | Restart | pause menu | R |
 | Next level | completion panel | N |
@@ -31,6 +36,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how generation works,
 | Autopilot (dev) | — | F4 |
 
 With mouse touch emulation enabled, dragging with the mouse also steers on desktop.
+
+Every level is validated to be completable **without** using speed up/brake;
+they are tools for skill — boosting into a wire curve or braking before a jump
+will make you fall.
 
 Each level gives 3 lives; falling respawns you at the last checkpoint (blue
 arches). Getting stuck for 2.5 s also returns you to the checkpoint (no life lost).
@@ -52,6 +61,23 @@ godot --path . --import     # first run: import resources
 godot --path .              # play (main menu)
 godot --path . -e           # open in the editor
 ```
+
+## Dev mode
+
+There is no separate build step: Godot runs the project straight from the
+source folder.
+
+```sh
+godot --path . --import     # once, after a fresh clone
+godot --path .              # play from the main menu
+godot --path . -e           # editor; press F5 to run the game from there
+```
+
+In game, **F3** toggles the debug overlay (collision wireframe, connectors,
+velocity, current module/environment, seed and generation stats) and **F4**
+toggles the autopilot. Progress and settings are saved to
+`~/.local/share/godot/app_userdata/Marble Run Procedural/save.cfg` — delete that
+file to reset progress (runs started with the flags below write to it too).
 
 ### Developer flags
 
@@ -81,11 +107,11 @@ in [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md).
 | Suite | Covers |
 |---|---|
 | `test_hash` | SplitMix64 / FNV-1a against Python reference values, seed parsing, track codes |
-| `test_geometry` | connector frames, end-profile continuity, collision winding, shared join vertices, mesh budget |
-| `test_generation` | 1000 seeds: determinism, variety, connector alignment, no overlaps (independent brute-force check), start/finish/checkpoints, bounded attempts, validator re-check, obstacle lanes, version fingerprint, golden levels |
+| `test_geometry` | connector frames, end-profile continuity, collision winding (trough up, tube inwards, wires outwards), shared join vertices per strip, jump gaps, mesh budget per style |
+| `test_generation` | 1000 seeds: determinism, variety (every module and environment used), connector alignment, no overlaps (independent brute-force check), start/finish/checkpoints, bounded attempts, validator re-check, obstacle lanes, version fingerprint, golden levels |
 | `test_persistence` | save/restore, versioned best times, seed replay after a simulated restart |
 | `test_endless` | stream determinism, 10 000 streamed modules without overlap, difficulty ramp, isolation from level generation, 90 s physics run with streaming collision |
-| `test_physics` | no-input smoke run, damping calibration, seam test across 12 joins, autopilot traversal of 30 generated levels |
+| `test_physics` | no-input smoke run, damping calibration (trough and wires), seam test across 12 joins, autopilot traversal of 30 generated levels, each environment without input, jump flight, braking before a jump fails, boost/brake response |
 
 Passing these tests does **not** guarantee every generated track is completable
 by a human; see the limitations document.

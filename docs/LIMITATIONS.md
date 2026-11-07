@@ -28,13 +28,23 @@
 
 ## Physics / gameplay
 
-* Single-tick vertical velocity blips (±0.07 m/s, no lift-off) occur when the
-  marble crosses internal triangle edges inside modules; joins between modules
-  are clean.
+* Wire collision is an approximation: flat contact strips where the marble
+  touches each round wire. A marble that climbs far over a side wire leaves the
+  strip earlier than it would leave a real round wire.
+* Jump validation flies the marble centre ballistically along the track; spin,
+  lateral offset and air drag are ignored (margins cover typical cases; the
+  physics tests fly real jumps).
+* Validation assumes no throttle. A player can boost past curve/crest limits or
+  brake before a climb or jump — that is intended as player skill/risk.
+* At the end of a tube, a marble riding high on the tube wall comes down onto the
+  open track as the profile blends back; at high speed this can throw it off.
+* Single-tick vertical velocity blips (≈0.1 m/s, no lift-off) occur when the
+  marble crosses triangle edges; joins between modules behave like any internal
+  edge (tested).
 * Moving sweepers are treated by the validator as blocking their whole sweep, so
   they only threaten a marble that leaves the safe lane.
-* Steering is a lateral force only; there is no brake/boost. Stalling (e.g. after
-  hitting an obstacle before a climb) returns the marble to the last checkpoint.
+* Stalling (e.g. after hitting an obstacle before a climb, or braking too much)
+  returns the marble to the last checkpoint.
 * The camera can pass close to/through a higher track section crossing above
   (minimum vertical clearance is 4 m).
 
@@ -62,8 +72,8 @@
 
 # Future extensions
 
-* More modules: loops, half-pipes, validated jumps, split paths, spinners,
-  moving platforms, boost pads, tunnels.
+* More modules: loops, half-pipes, split paths, spinners, moving platforms,
+  boost pads; jumps with curves; spiral tubes.
 * Tilt (accelerometer) steering option and haptics.
 * Ghost replay of the best run (inputs are already applied per physics tick).
 * Daily seed, local leaderboard per track code.
