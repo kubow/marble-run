@@ -18,6 +18,9 @@ var _look := Vector3.ZERO
 
 
 func _ready() -> void:
+	# Moved every rendered frame from the interpolated marble position, so the
+	# camera itself must not be physics-interpolated.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	fov = 70.0
 	near = 0.05
 	far = 400.0
@@ -31,7 +34,6 @@ func snap() -> void:
 	global_position = p - _fwd * distance + Vector3.UP * height
 	_look = p + _fwd * look_ahead
 	look_at(_look, Vector3.UP)
-	reset_physics_interpolation()
 
 
 func _desired_forward() -> Vector3:
@@ -51,7 +53,11 @@ func _process(delta: float) -> void:
 		return
 	var p := target.get_global_transform_interpolated().origin
 	var want := _desired_forward()
-	_fwd = _fwd.slerp(want, 1.0 - exp(-heading_smooth * delta)).normalized()
+	# lerp+normalize instead of slerp: slerp of nearly parallel vectors yields a
+	# slightly non-unit rotation axis (engine error spam).
+	var blended := _fwd.lerp(want, 1.0 - exp(-heading_smooth * delta))
+	if blended.length_squared() > 1e-6:
+		_fwd = blended.normalized()
 	var desired := p - _fwd * distance + Vector3.UP * height
 	global_position = global_position.lerp(desired, 1.0 - exp(-position_smooth * delta))
 	_look = _look.lerp(p + _fwd * look_ahead, 1.0 - exp(-look_smooth * delta))

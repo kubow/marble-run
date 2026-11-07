@@ -69,6 +69,9 @@
 * UI is constructed in code rather than in editor scenes; fine for this scope,
   less convenient for visual editing.
 * No audio.
+* Headless runs print one Jolt warning at level load ("job system exceeded the
+  maximum number of jobs … waiting"). It is engine-internal, harmless (Jolt
+  waits), predates the v2 changes, and does not appear in windowed runs.
 
 # Future extensions
 
