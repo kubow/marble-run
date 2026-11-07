@@ -42,7 +42,8 @@ else
   "$GODOT" --headless --path . --export-debug "Android" "$OUT"
 fi
 ls -l "$OUT"
-"$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$OUT" | head -3 || true
+BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
+"$BT/apksigner" verify --print-certs "$OUT" | head -3 || true
 
 if [[ "$INSTALL" == "--install" ]]; then
   ADB="$ANDROID_HOME/platform-tools/adb"

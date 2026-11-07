@@ -121,3 +121,25 @@ The project uses the Mobile renderer (Vulkan) with
 Vulkan fall back to the Compatibility (OpenGL ES 3) renderer. Both were run on
 desktop; to force Compatibility for testing:
 `godot --path . --rendering-method gl_compatibility`.
+
+## GitHub Actions
+
+`.github/workflows/android.yml` runs on pushes/PRs to `main`, manual dispatch and
+`v*` tags. It installs Godot 4.7.2 + Android templates (SHA-512 verified, cached),
+uses the runner's preinstalled Android SDK with Temurin JDK 17, runs the test
+suite, sets `version/code` to the run number, and builds the debug APK.
+
+* Every run: APK available as the `marble-run-debug-apk` workflow artifact
+  (Actions tab → run → Artifacts; requires GitHub login, kept 90 days).
+* Tags: `git tag v0.2.0 && git push origin v0.2.0` attaches the APK to a GitHub
+  Release — a public link you can open on the phone to download and install.
+
+Optional but recommended — sign every CI build with the same key, so new builds
+install over old ones:
+
+```sh
+base64 -w0 ~/.android/debug.keystore | gh secret set ANDROID_DEBUG_KEYSTORE_BASE64
+```
+
+Without that secret each run generates a new debug key and Android will refuse to
+update an installed copy (uninstall first).
